@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException, WebSocket
 from fastapi.responses import Response
 
-from . import csv_export, db, schemas
+from . import csv_export, db, question_order, schemas
 from .auth import hash_host_key, require_host_key
 from .limits import RateLimiter
 
@@ -58,7 +58,9 @@ def get_state(code: str) -> schemas.SessionState:
 def create_question(
     code: str, body: schemas.QuestionCreate, _key: str = Depends(require_host_key)
 ) -> schemas.QuestionCreated:
-    question_id = db.create_question(code, body.type, body.text, body.options)
+    question_id = db.create_question(
+        code, body.type, body.text, body.options, body.chart
+    )
     if question_id is None:
         raise HTTPException(status_code=404, detail="Session not found")
     return schemas.QuestionCreated(id=question_id)
@@ -71,6 +73,21 @@ def update_question(
     changes = body.model_dump(exclude_unset=True)
     if changes and not db.update_question_state(code, qid, changes):
         raise HTTPException(status_code=404, detail="Question not found")
+    return schemas.Ok()
+
+
+@router.put("/api/sessions/{code}/questions/order", response_model=schemas.Ok)
+def reorder_questions(
+    code: str, body: schemas.QuestionOrder, _key: str = Depends(require_host_key)
+) -> schemas.Ok:
+    result = question_order.reorder_questions(code, body.question_ids)
+    if result == "not_found":
+        raise HTTPException(status_code=404, detail="Session not found")
+    if result == "mismatch":
+        raise HTTPException(
+            status_code=422,
+            detail="question_ids must list every question in the session exactly once",
+        )
     return schemas.Ok()
 
 

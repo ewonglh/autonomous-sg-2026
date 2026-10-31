@@ -12,9 +12,10 @@ All JSON lives under `/api`. Any change to this contract is agreed on issue #4 f
 | Method and path | Who | Body | Returns |
 | --- | --- | --- | --- |
 | `POST /api/sessions` | anyone | none | `{code, host_key}`. The key is shown once; store only its hash. |
-| `GET /api/sessions/{code}/state` | public | none | `{title, active_question: {id, type, text, options[{id,label}], is_open, results_visible} \| null}` |
-| `POST /api/sessions/{code}/questions` | host | `{type: "multiple_choice" \| "word_cloud", text, options[]}` | `{id}` |
-| `PATCH /api/sessions/{code}/questions/{qid}` | host | `{is_open?, results_visible?}` | `{ok}` |
+| `GET /api/sessions/{code}/state` | public | none | `{title, active_question: {id, type, text, options[{id,label}], is_open, results_visible, chart} \| null}` |
+| `POST /api/sessions/{code}/questions` | host | `{type: "multiple_choice" \| "word_cloud" \| "qa", text, options[], chart?}` | `{id}` |
+| `PATCH /api/sessions/{code}/questions/{qid}` | host | `{is_open?, results_visible?, chart?}` | `{ok}` |
+| `PUT /api/sessions/{code}/questions/order` | host | `{question_ids: [3, 1, 2]}` | `{ok}`; 422 unless the list is exactly the session's question ids |
 | `POST /api/sessions/{code}/active` | host | `{question_id}` | `{ok}` |
 | `POST /api/sessions/{code}/questions/{qid}/responses` | participant | `{option_id \| text}` | `{ok}` |
 | `GET /api/sessions/{code}/results` | host | none | `{results: [{question_id, type, options?: [{option_id, label, count}], words?: [{word, count}]}]}` |
@@ -24,7 +25,10 @@ All JSON lives under `/api`. Any change to this contract is agreed on issue #4 f
 
 Notes:
 
-- `type` is `multiple_choice` or `word_cloud`. `options` is used for multiple choice only.
+- `type` is `multiple_choice`, `word_cloud` or `qa`. `options` and `chart` are used for multiple choice only.
+- `chart` is `bar` (default) or `donut`: how a poll's results are drawn. It is `null` for other types. Patching `chart` on a non-poll returns 404.
+- Slides are ordered by `position`. New slides go to the end; `PUT .../questions/order` sets positions 1..N in the given order. `/results` lists slides in this order.
+- A `qa` slide has no options. `is_open` means "accepting new audience questions"; `results_visible` is ignored. In `/results` it appears as `{question_id, type}` only until audience questions land (#19).
 - Responses: a repeat vote for multiple choice returns 409. Word cloud allows up to 3 responses per participant.
 - Host routes return 401 without a bearer key.
 - After a WebSocket message, clients refetch `state`.
@@ -45,11 +49,11 @@ The host key lives only in the URL fragment, never in the participant link or QR
 ## Tables
 
 - `sessions(id, code, host_key_hash, title, created_at, last_active_at, active_question_id)`
-- `questions(id, session_id, position, type, text, is_open, results_visible)`
+- `questions(id, session_id, position, type, text, chart, is_open, results_visible)`; `type` allows `qa`, `chart` is `bar`, `donut` or null.
 - `options(id, question_id, position, label)`
 - `responses(id, question_id, participant_id, option_id, text, created_at)`, with a unique `(question_id, participant_id)` for multiple choice only (a partial unique index where `option_id` is set).
 
-The schema is created on startup by `src/db.py`. The database file is `crowdpulse.db`, or the path in `DB_PATH`.
+The schema is created on startup by `src/db.py`. The database file is `crowdpulse.db`, or the path in `DB_PATH`. Tables are only created when missing, so after a schema change delete your old `crowdpulse.db` (there is no automatic upgrade).
 
 ## Tests
 
