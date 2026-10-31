@@ -99,3 +99,23 @@ class SlideTests(ApiTestCase):
             "PUT", f"{self.base}/questions/order", None, {"question_ids": []}
         )
         self.assertEqual(status, 401)
+
+    def test_question_list_is_ordered_and_has_chart(self):
+        poll, cloud = self.poll(chart="donut"), self.create({"type": "word_cloud", "text": "W?"})
+        self.request(
+            "PUT", f"{self.base}/questions/order", self.host, {"question_ids": [cloud, poll]}
+        )
+        _, raw, _ = self.request("GET", f"{self.base}/questions", self.host)
+        items = json.loads(raw)["questions"]
+        self.assertEqual(
+            [(q["id"], q["position"], q["chart"]) for q in items],
+            [(cloud, 1, None), (poll, 2, "donut")],
+        )
+
+    def test_qa_slide_ignores_results_visible(self):
+        question_id = self.create({"type": "qa", "text": "Ask"})
+        self.request(
+            "PATCH", f"{self.base}/questions/{question_id}", self.host,
+            {"results_visible": True},
+        )
+        self.assertIsNone(self.active_state(question_id)["results"])
