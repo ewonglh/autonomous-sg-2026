@@ -1,0 +1,18 @@
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
+
+app = FastAPI(title="CrowdPulse")
+
+
+@app.get("/", response_class=HTMLResponse)
+def home() -> str:
+    return """<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>CrowdPulse</title></head>
+  <body><main><h1>CrowdPulse</h1><p>Live questions for your event.</p><p>App is running. The first demo flow is ready to build.</p></main></body>
+</html>"""
+
+
+@app.get("/healthz")
+def health() -> dict[str, str]:
+    return {"status": "ok"}

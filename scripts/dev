@@ -1,6 +1,6 @@
 #!/bin/sh
 # Run the app locally with secrets injected. Each worktree sets its own PORT (issue N uses 3000 + N).
-# KICKOFF: replace the TODO line with your stack's dev command.
+# Start the local FastAPI development server.
 set -e
 
 command -v dotenvx >/dev/null 2>&1 || {
@@ -16,5 +16,4 @@ if [ -z "$PORT" ]; then
 fi
 export PORT
 
-# TODO(kickoff): e.g. dotenvx run -- npm run dev | dotenvx run -- python app.py
-echo "dev: not configured yet (edit scripts/dev)"
+dotenvx run -- sh scripts/python -m uvicorn src.main:app --host 0.0.0.0 --port "$PORT" --reload

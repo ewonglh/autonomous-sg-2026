@@ -1,7 +1,6 @@
 #!/bin/sh
 # Build the app the way the deploy will.
-# KICKOFF: replace the TODO line with your stack's build command.
+# Build the app container used by the local and demo setup.
 set -e
 
-# TODO(kickoff): e.g. npm run build | go build ./... | docker build .
-echo "build: not configured yet (edit scripts/build)"
+docker compose build

@@ -1,0 +1,10 @@
+#!/bin/sh
+set -e
+
+if [ -x .venv/Scripts/python.exe ]; then
+  exec .venv/Scripts/python.exe "$@"
+fi
+if [ -x .venv/bin/python ]; then
+  exec .venv/bin/python "$@"
+fi
+exec python "$@"

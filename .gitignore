@@ -12,4 +12,7 @@ dist/
 build/
 __pycache__/
 .venv/
+.pytest_cache/
+.ruff_cache/
+*.py[cod]
 .DS_Store
