@@ -38,6 +38,9 @@ The named volume `app_data` stores the SQLite database at `/data/crowdpulse.db`.
 - Port 3000 already in use: stop whatever else uses it, or change the left-hand number in `compose.yaml` (`"127.0.0.1:3000:8000"`).
 - No `trycloudflare.com` line in the logs: wait 10 seconds and run `docker compose logs tunnel` again. If still empty, run `docker compose restart tunnel` (this gives a new URL).
 - Tunnel link does not load on mobile data: confirm `http://localhost:3000/healthz` works first, then restart the tunnel and use the new URL.
+- Q&A slide creation fails after pulling the Q&A schema update: stop local development, then remove `crowdpulse.db` from the repo root before restarting. This deletes local sessions and responses; Docker's separate `app_data` volume is unaffected.
+  - Git Bash, macOS or Linux: `rm crowdpulse.db`
+  - PowerShell: `Remove-Item -LiteralPath .\crowdpulse.db`
 - App changes not showing: rebuild with `docker compose up --build -d`.
 - Live updates stop working: run only one app container. The WebSocket manager is in memory.
 
