@@ -119,6 +119,7 @@ class SessionExpiryRouteTests(ApiTestCase):
         )
         requests = [
             ("GET", f"/api/sessions/{self.code}/state", None, None),
+            ("GET", f"/api/sessions/{self.code}/questions", self.host, None),
             (
                 "POST",
                 f"/api/sessions/{self.code}/questions",
