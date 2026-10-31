@@ -1,30 +1,22 @@
 # CrowdPulse
 
-CrowdPulse is an open source live polling app for event hosts and audiences. The first version is designed to run on one computer and share through a temporary Cloudflare Quick Tunnel.
+CrowdPulse is a live polling app for event hosts and audiences. Run it on your computer and share it with phones through a temporary Cloudflare link.
 
-## Prerequisites
+## Quick setup
 
-- Docker Desktop (running) with Docker Compose
-- Git, and Git Bash on Windows (or any POSIX shell)
-- Optional, for `sh scripts/dev` only: Python 3 and dotenvx. No secrets are needed for the Docker demo.
-
-## Start
+You need Git and Docker Desktop with Docker Compose.
 
 ```sh
+git clone https://github.com/ewonglh/autonomous-sg-2026.git
+cd autonomous-sg-2026
 docker compose up --build -d
 ```
 
-Check it: open <http://localhost:3000/healthz>. It should return `{"status":"ok"}`.
+Open <http://localhost:3000/host>, create a session, and add questions. The app finds the temporary Cloudflare link automatically and uses it for the participant link and presenter QR.
 
-Find the public link for phones:
+The first start may take a few minutes. The temporary link changes whenever the tunnel restarts.
 
-```sh
-docker compose logs tunnel
-```
-
-Look for a line containing `https://<random-words>.trycloudflare.com`. Add `/healthz` to test it. The link changes every time the tunnel restarts, so do not print or share it ahead of the event.
-
-## Stop
+## Stop the app
 
 ```sh
 docker compose down
@@ -34,10 +26,10 @@ The named volume `app_data` stores the SQLite database at `/data/crowdpulse.db`.
 
 ## Troubleshooting
 
-- `failed to connect to the docker API`: Docker Desktop is not running. Start it and wait for the whale icon to settle.
+- `failed to connect to the docker API`: Docker Desktop is not running. Start it and wait until it is ready.
 - Port 3000 already in use: stop whatever else uses it, or change the left-hand number in `compose.yaml` (`"127.0.0.1:3000:8000"`).
-- No `trycloudflare.com` line in the logs: wait 10 seconds and run `docker compose logs tunnel` again. If still empty, run `docker compose restart tunnel` (this gives a new URL).
-- Tunnel link does not load on mobile data: confirm `http://localhost:3000/healthz` works first, then restart the tunnel and use the new URL.
+- No public link appears on the host page: wait 10 seconds, then run `docker compose restart tunnel`.
+- Tunnel link does not load on mobile data: restart the tunnel and wait for the host page to show the new link.
 - App changes not showing: rebuild with `docker compose up --build -d`.
 - Live updates stop working: run only one app container. The WebSocket manager is in memory.
 

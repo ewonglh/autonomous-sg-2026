@@ -4,16 +4,28 @@ services:
     env_file: .env
     environment:
       DB_PATH: /data/crowdpulse.db
+      TUNNEL_LOG_PATH: /tunnel/cloudflared.log
     ports:
       - "127.0.0.1:3000:8000"
     volumes:
       - app_data:/data
+      - tunnel_data:/tunnel
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
 
   tunnel:
     image: cloudflare/cloudflared:2025.5.0
-    command: tunnel --no-autoupdate --url http://app:8000
+    user: "65532:65532"
+    command: tunnel --no-autoupdate --logfile /tunnel/cloudflared.log --url http://app:8000
     depends_on:
-      - app
+      app:
+        condition: service_healthy
+    volumes:
+      - tunnel_data:/tunnel
 
 volumes:
   app_data:
+  tunnel_data:
