@@ -64,6 +64,8 @@ def utc_now() -> datetime:
 
 
 def has_session_expired(last_active_at: str, now: datetime | None = None) -> bool:
+    if last_active_at.endswith("Z"):
+        last_active_at = f"{last_active_at[:-1]}+00:00"
     last_active = datetime.fromisoformat(last_active_at)
     current_time = utc_now() if now is None else now
     return current_time - last_active >= SESSION_IDLE_TIMEOUT

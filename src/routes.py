@@ -35,6 +35,11 @@ def parse_participant_id(value: str) -> str:
         ) from exc
 
 
+def reject_expired_session(code: str) -> None:
+    if db.session_is_expired(code):
+        raise HTTPException(status_code=404, detail="Session not found")
+
+
 @router.post("/api/sessions", response_model=schemas.SessionCreated)
 def create_session() -> schemas.SessionCreated:
     enforce_rate_limit(("session_creation",), SESSION_CREATION_LIMIT)
@@ -46,44 +51,72 @@ def create_session() -> schemas.SessionCreated:
     raise HTTPException(status_code=503, detail="Could not create a unique session")
 
 
-@router.get("/api/sessions/{code}/state", response_model=schemas.SessionState)
+@router.get(
+    "/api/sessions/{code}/state",
+    response_model=schemas.SessionState,
+    dependencies=[Depends(reject_expired_session)],
+)
 def get_state(code: str) -> schemas.SessionState:
     state = db.get_session_state(code)
     if state is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    return schemas.SessionState(**state)
+    response = schemas.SessionState(**state)
+    db.touch_session_activity(code)
+    return response
 
 
-@router.post("/api/sessions/{code}/questions", response_model=schemas.QuestionCreated)
+@router.post(
+    "/api/sessions/{code}/questions",
+    response_model=schemas.QuestionCreated,
+    dependencies=[Depends(reject_expired_session)],
+)
 def create_question(
     code: str, body: schemas.QuestionCreate, _key: str = Depends(require_host_key)
 ) -> schemas.QuestionCreated:
     question_id = db.create_question(code, body.type, body.text, body.options)
     if question_id is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    return schemas.QuestionCreated(id=question_id)
+    response = schemas.QuestionCreated(id=question_id)
+    db.touch_session_activity(code)
+    return response
 
 
-@router.patch("/api/sessions/{code}/questions/{qid}", response_model=schemas.Ok)
+@router.patch(
+    "/api/sessions/{code}/questions/{qid}",
+    response_model=schemas.Ok,
+    dependencies=[Depends(reject_expired_session)],
+)
 def update_question(
     code: str, qid: int, body: schemas.QuestionUpdate, _key: str = Depends(require_host_key)
 ) -> schemas.Ok:
     changes = body.model_dump(exclude_unset=True)
     if changes and not db.update_question_state(code, qid, changes):
         raise HTTPException(status_code=404, detail="Question not found")
-    return schemas.Ok()
+    response = schemas.Ok()
+    db.touch_session_activity(code)
+    return response
 
 
-@router.post("/api/sessions/{code}/active", response_model=schemas.Ok)
+@router.post(
+    "/api/sessions/{code}/active",
+    response_model=schemas.Ok,
+    dependencies=[Depends(reject_expired_session)],
+)
 def set_active(
     code: str, body: schemas.ActiveSet, _key: str = Depends(require_host_key)
 ) -> schemas.Ok:
     if not db.set_active_question(code, body.question_id):
         raise HTTPException(status_code=404, detail="Question not found")
-    return schemas.Ok()
+    response = schemas.Ok()
+    db.touch_session_activity(code)
+    return response
 
 
-@router.post("/api/sessions/{code}/questions/{qid}/responses", response_model=schemas.Ok)
+@router.post(
+    "/api/sessions/{code}/questions/{qid}/responses",
+    response_model=schemas.Ok,
+    dependencies=[Depends(reject_expired_session)],
+)
 def submit_response(
     code: str,
     qid: int,
@@ -120,7 +153,9 @@ def submit_response(
             raise HTTPException(
                 status_code=409, detail="Participant has already responded"
             )
-        return schemas.Ok()
+        response = schemas.Ok()
+        db.touch_session_activity(code)
+        return response
 
     if body.text is None or len(body.text) > 200:
         raise HTTPException(status_code=422, detail="Invalid word-cloud response")
@@ -139,20 +174,29 @@ def submit_response(
         raise HTTPException(status_code=409, detail="Question is closed")
     if result == "limit_reached":
         raise HTTPException(status_code=409, detail="Response limit reached")
-    return schemas.Ok()
+    response = schemas.Ok()
+    db.touch_session_activity(code)
+    return response
 
 
 @router.get(
     "/api/sessions/{code}/results",
     response_model=schemas.Results,
     response_model_exclude_none=True,
+    dependencies=[Depends(reject_expired_session)],
 )
 def get_results(code: str, _key: str = Depends(require_host_key)) -> schemas.Results:
     results = [schemas.QuestionResults(**result) for result in db.get_session_results(code)]
-    return schemas.Results(results=results)
+    response = schemas.Results(results=results)
+    db.touch_session_activity(code)
+    return response
 
 
-@router.get("/api/sessions/{code}/export.csv", response_class=Response)
+@router.get(
+    "/api/sessions/{code}/export.csv",
+    response_class=Response,
+    dependencies=[Depends(reject_expired_session)],
+)
 def export_csv(code: str, _key: str = Depends(require_host_key)) -> Response:
     conn = db.connect()
     try:
@@ -179,8 +223,10 @@ def export_csv(code: str, _key: str = Depends(require_host_key)) -> Response:
          row["participant_id"], row["created_at"], "")
         for row in responses
     )
+    content = csv_export.render_csv(rows)
+    db.touch_session_activity(code)
     return Response(
-        content=csv_export.render_csv(rows),
+        content=content,
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{code}.csv"'},
     )
