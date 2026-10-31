@@ -14,7 +14,8 @@ All JSON lives under `/api`. Any change to this contract is agreed on issue #4 f
 | `POST /api/sessions` | anyone | none | `{code, host_key}`. The key is shown once; store only its hash. |
 | `GET /api/sessions/{code}/state` | public | none | `{title, active_question: {id, type, text, options[{id,label}], is_open, results_visible} \| null}` |
 | `POST /api/sessions/{code}/questions` | host | `{type: "multiple_choice" \| "word_cloud", text, options[]}` | `{id}` |
-| `PATCH /api/sessions/{code}/questions/{qid}` | host | `{is_open?, results_visible?}` | `{ok}` |
+| `PATCH /api/sessions/{code}/questions/{qid}` | host | `{is_open?, results_visible?, text?, options?[]}`; options only change while the slide has no responses (else 409 `has_responses`) | `{ok}` |
+| `DELETE /api/sessions/{code}/questions/{qid}` | host | none | `{ok}`. Removes the slide with its options and responses, clears the screen if it was showing, renumbers the rest 1..N |
 | `POST /api/sessions/{code}/active` | host | `{question_id}` | `{ok}` |
 | `POST /api/sessions/{code}/questions/{qid}/responses` | participant | `{option_id \| text}` | `{ok}` |
 | `GET /api/sessions/{code}/results` | host | none | `{results: [{question_id, type, options?: [{option_id, label, count}], words?: [{word, count}]}]}` |

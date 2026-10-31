@@ -98,7 +98,25 @@ def update_question(
     code: RoomCode, qid: int, body: schemas.QuestionUpdate, _key: str = Depends(require_host_key)
 ) -> schemas.Ok:
     changes = body.model_dump(exclude_unset=True)
+    text, options = changes.pop("text", None), changes.pop("options", None)
+    if text is not None or options is not None:
+        result = db.edit_question(code, qid, text, options)
+        if result == "not_found":
+            raise HTTPException(status_code=404, detail="Question not found")
+        if result == "wrong_type":
+            raise ApiError(422, "Only multiple-choice questions have options", "wrong_type")
+        if result == "has_responses":
+            raise ApiError(409, "Options cannot change once someone has answered", "has_responses")
     if changes and not db.update_question_state(code, qid, changes):
+        raise HTTPException(status_code=404, detail="Question not found")
+    return schemas.Ok()
+
+
+@router.delete("/api/sessions/{code}/questions/{qid}", response_model=schemas.Ok)
+def delete_question(
+    code: RoomCode, qid: int, _key: str = Depends(require_host_key)
+) -> schemas.Ok:
+    if not db.delete_question(code, qid):
         raise HTTPException(status_code=404, detail="Question not found")
     return schemas.Ok()
 
