@@ -1,6 +1,7 @@
 import os
 import sqlite3
 from datetime import datetime, timezone
+from typing import Literal
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -39,6 +40,10 @@ CREATE TABLE IF NOT EXISTS responses (
 CREATE UNIQUE INDEX IF NOT EXISTS one_vote_per_participant
     ON responses (question_id, participant_id) WHERE option_id IS NOT NULL;
 """
+
+ResponseSubmission = Literal[
+    "accepted", "not_found", "wrong_type", "closed", "invalid_option", "duplicate"
+]
 
 
 def db_path() -> str:
@@ -120,6 +125,184 @@ def create_question(
         )
         conn.commit()
         return question_id
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def save_multiple_choice_response(
+    code: str, question_id: int, participant_id: str, option_id: int
+) -> ResponseSubmission:
+    conn = connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        question = conn.execute(
+            """SELECT q.type, q.is_open
+               FROM questions q
+               JOIN sessions s ON s.id = q.session_id
+               WHERE s.code = ? AND q.id = ?""",
+            (code, question_id),
+        ).fetchone()
+        if question is None:
+            return "not_found"
+        if question["type"] != "multiple_choice":
+            return "wrong_type"
+        if not question["is_open"]:
+            return "closed"
+
+        option = conn.execute(
+            "SELECT 1 FROM options WHERE id = ? AND question_id = ?",
+            (option_id, question_id),
+        ).fetchone()
+        if option is None:
+            return "invalid_option"
+
+        try:
+            conn.execute(
+                """INSERT INTO responses
+                   (question_id, participant_id, option_id, created_at)
+                   VALUES (?, ?, ?, ?)""",
+                (
+                    question_id,
+                    participant_id,
+                    option_id,
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            )
+            conn.commit()
+            return "accepted"
+        except sqlite3.IntegrityError:
+            conn.rollback()
+            duplicate = conn.execute(
+                """SELECT 1 FROM responses
+                   WHERE question_id = ? AND participant_id = ? AND option_id IS NOT NULL""",
+                (question_id, participant_id),
+            ).fetchone()
+            if duplicate is not None:
+                return "duplicate"
+            raise
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def update_question_state(code: str, question_id: int, changes: dict[str, bool]) -> bool:
+    allowed_fields = {"is_open", "results_visible"}
+    if not changes or not set(changes).issubset(allowed_fields):
+        raise ValueError("Question state changes must contain valid flags")
+
+    assignments = ", ".join(f"{field} = ?" for field in changes)
+    values = [int(value) for value in changes.values()]
+    conn = connect()
+    try:
+        cursor = conn.execute(
+            f"""UPDATE questions SET {assignments}
+                WHERE id = ? AND session_id = (
+                    SELECT id FROM sessions WHERE code = ?
+                )""",
+            (*values, question_id, code),
+        )
+        conn.commit()
+        return cursor.rowcount == 1
+    finally:
+        conn.close()
+
+
+def set_active_question(code: str, question_id: int) -> bool:
+    conn = connect()
+    try:
+        cursor = conn.execute(
+            """UPDATE sessions SET active_question_id = ?
+               WHERE code = ? AND EXISTS (
+                   SELECT 1 FROM questions
+                   WHERE questions.id = ? AND questions.session_id = sessions.id
+               )""",
+            (question_id, code, question_id),
+        )
+        conn.commit()
+        return cursor.rowcount == 1
+    finally:
+        conn.close()
+
+
+def get_session_state(code: str) -> dict | None:
+    conn = connect()
+    try:
+        session = conn.execute(
+            """SELECT sessions.title, questions.id AS question_id, questions.type,
+                      questions.text, questions.is_open, questions.results_visible
+               FROM sessions
+               LEFT JOIN questions
+                 ON questions.id = sessions.active_question_id
+                AND questions.session_id = sessions.id
+               WHERE sessions.code = ?""",
+            (code,),
+        ).fetchone()
+        if session is None:
+            return None
+
+        active_question = None
+        if session["question_id"] is not None:
+            options = conn.execute(
+                "SELECT id, label FROM options WHERE question_id = ? ORDER BY position",
+                (session["question_id"],),
+            ).fetchall()
+            active_question = {
+                "id": session["question_id"],
+                "type": session["type"],
+                "text": session["text"],
+                "options": [{"id": row["id"], "label": row["label"]} for row in options],
+                "is_open": bool(session["is_open"]),
+                "results_visible": bool(session["results_visible"]),
+            }
+        return {"title": session["title"], "active_question": active_question}
+    finally:
+        conn.close()
+
+
+def save_word_cloud_response(
+    code: str, question_id: int, participant_id: str, text: str
+) -> str:
+    conn = connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        question = conn.execute(
+            """SELECT q.type, q.is_open
+               FROM questions AS q
+               JOIN sessions AS s ON s.id = q.session_id
+               WHERE s.code = ? AND q.id = ?""",
+            (code, question_id),
+        ).fetchone()
+        if question is None:
+            result = "not_found"
+        elif question["type"] != "word_cloud":
+            result = "wrong_type"
+        elif not question["is_open"]:
+            result = "closed"
+        else:
+            response_count = conn.execute(
+                """SELECT COUNT(*) FROM responses
+                   WHERE question_id = ? AND participant_id = ?""",
+                (question_id, participant_id),
+            ).fetchone()[0]
+            if response_count >= 3:
+                result = "limit_reached"
+            else:
+                created_at = datetime.now(timezone.utc).isoformat()
+                conn.execute(
+                    """INSERT INTO responses
+                       (question_id, participant_id, text, created_at)
+                       VALUES (?, ?, ?, ?)""",
+                    (question_id, participant_id, text, created_at),
+                )
+                conn.commit()
+                return "saved"
+        conn.rollback()
+        return result
     except Exception:
         conn.rollback()
         raise
