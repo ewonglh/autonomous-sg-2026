@@ -6,6 +6,7 @@ import { limitLabel, TIME_LIMITS } from "./timer.js";
 import { imageOf, saveImage, shrinkImage, uploadImage } from "./image.js";
 import { byPosition, loadSlides, localSlides, notFound, patchLocal, saveLocal, showSlide } from "./slides.js";
 import { renderLiveDashboard, renderResultsDashboard, setupHostDashboard } from "./host-dashboard.js";
+import { watchPublicLink } from "./public-link.js";
 
 const $ = (id) => document.getElementById(id);
 const code = codeFromPath();
@@ -16,6 +17,7 @@ let slides = [];
 let activeId = null;
 let activeQuestion = null;
 let dashboard;
+const publicLink = watchPublicLink(code, $("join-link"));
 
 if (!code) showCreate();
 else if (!hostKey) $("no-key").hidden = false;
@@ -38,12 +40,15 @@ function showCreate() {
 function start() {
   $("console").hidden = false;
   dashboard = setupHostDashboard((tab) => tab === "results" && refreshResults());
-  const joinUrl = `${location.origin}/join/${encodeURIComponent(code)}`;
+  const joinUrl = publicLink.enabled && !publicLink.origin
+    ? "Finding the public link…"
+    : `${publicLink.origin || location.origin}/join/${encodeURIComponent(code)}`;
   $("code").textContent = code;
   $("join-link").value = joinUrl;
   $("copy-join").onclick = async () => {
+    if (publicLink.enabled && !publicLink.origin) return say("The public link is still starting. Try again in a moment.", true);
     try {
-      await navigator.clipboard.writeText(joinUrl);
+      await navigator.clipboard.writeText($("join-link").value);
       say("Join link copied.");
     } catch {
       $("join-link").select();
@@ -76,7 +81,21 @@ function say(text, isError = false) {
 // Slide 1 goes on screen first if nothing is showing yet.
 async function startPresentation() {
   if (!slides.length) return say("Add at least one slide first.", true);
-  window.open(`/present/${encodeURIComponent(code)}#key=${encodeURIComponent(hostKey)}`, "_blank", "noopener");
+  const path = `/present/${encodeURIComponent(code)}#key=${encodeURIComponent(hostKey)}`;
+  if (publicLink.origin || !publicLink.enabled) {
+    window.open(`${publicLink.origin || location.origin}${path}`, "_blank", "noopener");
+  } else {
+    const presenter = window.open("about:blank", "_blank");
+    if (!presenter) return say("Allow pop-ups to open the presenter screen.", true);
+    presenter.opener = null;
+    say("Connecting to the public link…");
+    const origin = await publicLink.wait(30000);
+    if (!origin) {
+      presenter.close();
+      return say("The public link did not start. Check that Docker is running.", true);
+    }
+    presenter.location.replace(`${origin}${path}`);
+  }
   try {
     if (activeId === null) await showSlide(code, hostKey, slides[0].id);
     say("Presenter opened. You can also control the live slide here.");

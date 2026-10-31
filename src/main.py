@@ -10,6 +10,7 @@ from .db import init_db
 from .errors import ApiError, api_error_handler
 from .pages import STATIC_DIR
 from .pages import router as pages_router
+from .public_origin import router as public_origin_router
 from .images import router as images_router
 from .qa import router as qa_router
 from .qr import router as qr_router
@@ -43,6 +44,7 @@ app.include_router(qa_router)
 app.include_router(images_router)
 app.include_router(qr_router)
 app.include_router(pages_router)
+app.include_router(public_origin_router)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
