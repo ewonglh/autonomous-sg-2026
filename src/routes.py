@@ -124,25 +124,14 @@ def submit_response(
     return schemas.Ok()
 
 
-@router.get("/api/sessions/{code}/results", response_model=schemas.Results)
+@router.get(
+    "/api/sessions/{code}/results",
+    response_model=schemas.Results,
+    response_model_exclude_none=True,
+)
 def get_results(code: str, _key: str = Depends(require_host_key)) -> schemas.Results:
-    return schemas.Results(
-        results=[
-            schemas.QuestionResults(
-                question_id=1,
-                type="multiple_choice",
-                options=[
-                    schemas.OptionCount(option_id=1, label="Yes", count=0),
-                    schemas.OptionCount(option_id=2, label="No", count=0),
-                ],
-            ),
-            schemas.QuestionResults(
-                question_id=2,
-                type="word_cloud",
-                words=[schemas.WordCount(word="dummy", count=1)],
-            ),
-        ]
-    )
+    results = [schemas.QuestionResults(**result) for result in db.get_session_results(code)]
+    return schemas.Results(results=results)
 
 
 @router.get("/api/sessions/{code}/export.csv", response_class=Response)
