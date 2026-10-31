@@ -58,6 +58,22 @@ def get_state(code: str) -> schemas.SessionState:
     state = db.get_session_state(code)
     if state is None:
         raise HTTPException(status_code=404, detail="Session not found")
+    active_question = state["active_question"]
+    if active_question and active_question["results_visible"]:
+        result = next(
+            (
+                item
+                for item in db.get_session_results(code)
+                if item["question_id"] == active_question["id"]
+            ),
+            None,
+        )
+        if result is not None:
+            active_question["results"] = (
+                {"options": result["options"]}
+                if result["type"] == "multiple_choice"
+                else {"words": result["words"]}
+            )
     return schemas.SessionState(**state)
 
 

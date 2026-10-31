@@ -12,7 +12,7 @@ All JSON lives under `/api`. Contract changes are agreed in their owning issues.
 | Method and path | Who | Body | Returns |
 | --- | --- | --- | --- |
 | `POST /api/sessions` | anyone | `{title?}` | `{code, host_key}`. Title defaults to `Untitled session` and is limited to 120 characters. The host key is shown once; store only its hash. |
-| `GET /api/sessions/{code}/state` | public | none | `{title, active_question: {id, type, text, options[{id,label}], is_open, results_visible, response_count, results} \| null}`. `results` is `null` until revealed. |
+| `GET /api/sessions/{code}/state` | public | none | `{title, active_question: {id, type, text, options[{id,label}], is_open, results_visible, response_count, results} \| null}`. `results` is `null` until revealed; then it contains `options[{option_id,label,count}]` or `words[{word,count}]`. |
 | `GET /api/sessions/{code}/questions` | host | none | `{active_question_id, questions: [{id, position, type, text, options[{id,label}], is_open, results_visible, response_count}]}`. Ordered by position. |
 | `POST /api/sessions/{code}/questions` | host | `{type: "multiple_choice" \| "word_cloud", text, options[]}` | `{id}` |
 | `PATCH /api/sessions/{code}/questions/{qid}` | host | `{is_open?, results_visible?}` | `{ok}` |
