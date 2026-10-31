@@ -190,6 +190,80 @@ def save_multiple_choice_response(
         conn.close()
 
 
+def update_question_state(code: str, question_id: int, changes: dict[str, bool]) -> bool:
+    allowed_fields = {"is_open", "results_visible"}
+    if not changes or not set(changes).issubset(allowed_fields):
+        raise ValueError("Question state changes must contain valid flags")
+
+    assignments = ", ".join(f"{field} = ?" for field in changes)
+    values = [int(value) for value in changes.values()]
+    conn = connect()
+    try:
+        cursor = conn.execute(
+            f"""UPDATE questions SET {assignments}
+                WHERE id = ? AND session_id = (
+                    SELECT id FROM sessions WHERE code = ?
+                )""",
+            (*values, question_id, code),
+        )
+        conn.commit()
+        return cursor.rowcount == 1
+    finally:
+        conn.close()
+
+
+def set_active_question(code: str, question_id: int) -> bool:
+    conn = connect()
+    try:
+        cursor = conn.execute(
+            """UPDATE sessions SET active_question_id = ?
+               WHERE code = ? AND EXISTS (
+                   SELECT 1 FROM questions
+                   WHERE questions.id = ? AND questions.session_id = sessions.id
+               )""",
+            (question_id, code, question_id),
+        )
+        conn.commit()
+        return cursor.rowcount == 1
+    finally:
+        conn.close()
+
+
+def get_session_state(code: str) -> dict | None:
+    conn = connect()
+    try:
+        session = conn.execute(
+            """SELECT sessions.title, questions.id AS question_id, questions.type,
+                      questions.text, questions.is_open, questions.results_visible
+               FROM sessions
+               LEFT JOIN questions
+                 ON questions.id = sessions.active_question_id
+                AND questions.session_id = sessions.id
+               WHERE sessions.code = ?""",
+            (code,),
+        ).fetchone()
+        if session is None:
+            return None
+
+        active_question = None
+        if session["question_id"] is not None:
+            options = conn.execute(
+                "SELECT id, label FROM options WHERE question_id = ? ORDER BY position",
+                (session["question_id"],),
+            ).fetchall()
+            active_question = {
+                "id": session["question_id"],
+                "type": session["type"],
+                "text": session["text"],
+                "options": [{"id": row["id"], "label": row["label"]} for row in options],
+                "is_open": bool(session["is_open"]),
+                "results_visible": bool(session["results_visible"]),
+            }
+        return {"title": session["title"], "active_question": active_question}
+    finally:
+        conn.close()
+
+
 def init_db() -> None:
     conn = connect()
     try:

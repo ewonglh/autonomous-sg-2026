@@ -13,7 +13,21 @@ class ContractTests(ApiTestCase):
         self.assertEqual(set(self.create_session()), {"code", "host_key"})
 
     def test_state_shape(self):
-        status, body, _ = self.request("GET", "/api/sessions/ABC123/state")
+        session = self.create_session()
+        host = {"authorization": f"Bearer {session['host_key']}"}
+        _, question_body, _ = self.request(
+            "POST",
+            f"/api/sessions/{session['code']}/questions",
+            host,
+            {"type": "multiple_choice", "text": "Pick one?", "options": ["Yes", "No"]},
+        )
+        question_id = json.loads(question_body)["id"]
+        self.request(
+            "POST", f"/api/sessions/{session['code']}/active", host,
+            {"question_id": question_id},
+        )
+
+        status, body, _ = self.request("GET", f"/api/sessions/{session['code']}/state")
         data = json.loads(body)
         self.assertEqual(status, 200)
         self.assertEqual(set(data), {"title", "active_question"})

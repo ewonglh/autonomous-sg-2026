@@ -65,6 +65,12 @@ class QuestionUpdate(BaseModel):
     is_open: bool | None = None
     results_visible: bool | None = None
 
+    @model_validator(mode="after")
+    def require_question_flag(self) -> "QuestionUpdate":
+        if any(getattr(self, field) is None for field in self.model_fields_set):
+            raise ValueError("Question flags must be booleans")
+        return self
+
 
 class ActiveSet(BaseModel):
     question_id: int
