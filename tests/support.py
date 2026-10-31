@@ -4,7 +4,8 @@ import os
 import tempfile
 import unittest
 
-from src import db
+from src import db, routes
+from src.limits import RateLimiter
 from src.main import app
 
 
@@ -40,12 +41,15 @@ async def _call_app(method: str, path: str, headers: dict | None, body: dict | N
 
 class ApiTestCase(unittest.TestCase):
     def setUp(self):
+        self._original_rate_limiter = routes.rate_limiter
+        routes.rate_limiter = RateLimiter()
         self._original_db_path = os.environ.get("DB_PATH")
         self._temp_dir = tempfile.TemporaryDirectory()
         os.environ["DB_PATH"] = os.path.join(self._temp_dir.name, "test.db")
         db.init_db()
 
     def tearDown(self):
+        routes.rate_limiter = self._original_rate_limiter
         if self._original_db_path is None:
             os.environ.pop("DB_PATH", None)
         else:
