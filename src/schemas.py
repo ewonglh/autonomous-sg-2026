@@ -3,6 +3,11 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
+MAX_TEXT_LENGTH = 300
+MAX_OPTIONS = 10
+MAX_OPTION_LENGTH = 100
+
+
 class SessionCreated(BaseModel):
     code: str
     host_key: str
@@ -44,6 +49,8 @@ class QuestionCreate(BaseModel):
         value = value.strip()
         if not value:
             raise ValueError("Question text must not be blank")
+        if len(value) > MAX_TEXT_LENGTH:
+            raise ValueError(f"Question text must be at most {MAX_TEXT_LENGTH} characters")
         return value
 
     @field_validator("options")
@@ -52,6 +59,12 @@ class QuestionCreate(BaseModel):
         values = [value.strip() for value in values]
         if any(not value for value in values):
             raise ValueError("Option labels must not be blank")
+        if any(len(value) > MAX_OPTION_LENGTH for value in values):
+            raise ValueError(f"Option labels must be at most {MAX_OPTION_LENGTH} characters")
+        if len(values) > MAX_OPTIONS:
+            raise ValueError(f"Questions can have at most {MAX_OPTIONS} options")
+        if len({value.casefold() for value in values}) != len(values):
+            raise ValueError("Option labels must be different from each other")
         return values
 
     @model_validator(mode="after")
