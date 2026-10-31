@@ -18,6 +18,7 @@ allow .scope-allow
 allow .worktreeinclude
 allow .worktreelinks
 allow .env
+allow LICENSE
 
 allow src
 allow tests

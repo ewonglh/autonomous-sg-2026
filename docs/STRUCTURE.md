@@ -15,6 +15,47 @@ The layout of this repo and the rules for adding to it. `sh scripts/check-struct
 `-- (root files)    AGENTS.md, CLAUDE.md, KICKOFF.md, README.md, .structure, config
 ```
 
+## Proposed API module layout
+
+The current API skeleton uses `src/routes.py`, `src/db.py`, and `src/schemas.py`. As the later API issues add question control, responses, results, and live updates, use this target layout and move only the files owned by that issue:
+
+```text
+src/
+  main.py
+  auth.py
+  db.py
+  schemas.py
+  events.py
+  routes/
+    sessions.py
+    questions.py
+    responses.py
+    results.py
+    live.py
+  services/
+    sessions.py
+    questions.py
+    responses.py
+    results.py
+  storage/
+    sessions.py
+    questions.py
+    responses.py
+    results.py
+tests/
+  support.py
+  test_contract.py
+  test_sessions.py
+  test_questions.py
+  test_question_state.py
+  test_multiple_choice_responses.py
+  test_word_cloud_responses.py
+  test_results.py
+  test_screen_api.py
+```
+
+`routes/` translates HTTP requests and responses, `services/` applies polling rules, `storage/` owns SQL queries, and `db.py` creates connections and the schema. Keep route handlers and service functions at one level of abstraction; add a shared helper when more than one feature needs the same behavior.
+
 ## Where things go
 
 - One purpose per file. If a file does two jobs or passes the `max-lines` limit in `.structure`, split it.
