@@ -27,7 +27,13 @@ git tag -l 'demo-ok-*'          # pick the latest
 Check out `demo-ok-<time>` to run from that tag. Never force-push `main`.
 
 ## Deploy
-Decide at kickoff where the demo runs: on a laptop, or hosted. If hosted, write the one command or button here (TODO: filled in at kickoff) and test it once in the first third of the event, not at the end.
+The demo runs on one laptop with Docker Compose, shared through a Cloudflare Quick Tunnel.
+
+Start with `docker compose up --build -d`, then run `docker compose logs tunnel` to find the `trycloudflare.com` URL.
+
+Test once from a phone on mobile data in the first third of the event. The URL changes whenever the tunnel restarts.
+
+Stop with `docker compose down`. Never use `docker compose down -v`, because it deletes stored responses.
 
 ## Submission checklist
 - [ ] Demo path from `docs/PROJECT.md` runs from a clean checkout (`sh scripts/install && sh scripts/dev`).
