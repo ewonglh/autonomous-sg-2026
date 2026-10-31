@@ -53,17 +53,18 @@ Install Python dependencies into this repo's `.venv` with `sh scripts/install`, 
 
 ## Response export (CSV)
 
-One row per response, UTF-8 with a byte order mark so Excel opens it correctly. Columns:
+The host can download responses from `/api/sessions/{code}/export.csv`. The export has one row per response and uses UTF-8 with a byte order mark so Excel opens it correctly. Columns, in order:
 
-1. Session code
-2. Question order
-3. Question type (multiple choice or word cloud)
-4. Question text
-5. Answer (chosen option or free text)
-6. Anonymous participant ID
-7. Submitted at (UTC)
+1. `session_code` — session code
+2. `question_order` — slide order in the session
+3. `question_type` — multiple choice or word cloud
+4. `question_text` — slide text
+5. `answer` — chosen option or free text
+6. `participant_id` — anonymous browser ID
+7. `submitted_at_utc` — response time
+8. `qa_upvotes` — reserved for Q&A export; blank in this CSV
 
-Text cells starting with `=`, `+`, `-` or `@` are prefixed so spreadsheets do not run them as formulas. The export is not built yet; the column list is the agreed target.
+Text cells starting with `=`, `+`, `-` or `@` are prefixed so spreadsheets do not run them as formulas. Q&A submissions and votes are not included in this response export.
 
 ## Contributing
 
