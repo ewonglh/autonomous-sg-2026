@@ -2,6 +2,42 @@
 
 CrowdPulse is a live polling app for event hosts and audiences. Run it on your computer and share it with phones through a temporary Cloudflare link.
 
+## Technology stack
+
+![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white)
+![Docker Compose](https://img.shields.io/badge/Docker_Compose-2496ED?logo=docker&logoColor=white)
+![Cloudflare Quick Tunnel](https://img.shields.io/badge/Cloudflare-Quick_Tunnel-F38020?logo=cloudflare&logoColor=white)
+
+FastAPI serves the app and its browser interface, SQLite stores session data, and Docker Compose runs the app alongside a Cloudflare Quick Tunnel for sharing it with participants. Live updates use WebSockets.
+
+## Screenshots
+
+### Live results
+
+![Results page showing live poll responses](docs/screenshots/results-page.png)
+
+Results displayed as participants respond.
+
+### Slide editor
+
+![Host slide editor for preparing a polling session](docs/screenshots/slide-editor.png)
+
+Prepare and arrange questions before presenting.
+
+### Host live view
+
+![Host live view with controls for the active question](docs/screenshots/host-live-view.png)
+
+Control the active question during a session.
+
+### Presenter view
+
+![Presenter view showing the question to the audience](docs/screenshots/presenter-view.png)
+
+Display the session on a shared screen.
+
 ## Quick setup
 
 You need Git and Docker Desktop with Docker Compose.
