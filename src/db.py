@@ -57,16 +57,18 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
-def create_session(code: str, host_key_hash: str) -> bool:
+def create_session(
+    code: str, host_key_hash: str, title: str = "Untitled session"
+) -> bool:
     now = datetime.now(timezone.utc).isoformat()
     conn = connect()
     try:
         try:
             conn.execute(
                 """INSERT INTO sessions
-                   (code, host_key_hash, created_at, last_active_at)
-                   VALUES (?, ?, ?, ?)""",
-                (code, host_key_hash, now, now),
+                   (code, host_key_hash, title, created_at, last_active_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (code, host_key_hash, title, now, now),
             )
             conn.commit()
             return True

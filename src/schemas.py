@@ -8,6 +8,10 @@ class SessionCreated(BaseModel):
     host_key: str
 
 
+class SessionCreate(BaseModel):
+    title: str = Field(default="Untitled session", max_length=120)
+
+
 class Option(BaseModel):
     id: int
     label: str

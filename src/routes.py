@@ -22,11 +22,14 @@ def parse_participant_id(value: str) -> str:
 
 
 @router.post("/api/sessions", response_model=schemas.SessionCreated)
-def create_session() -> schemas.SessionCreated:
+def create_session(
+    body: schemas.SessionCreate | None = None,
+) -> schemas.SessionCreated:
     host_key = secrets.token_urlsafe(32)
+    title = body.title if body is not None else "Untitled session"
     for _ in range(5):
         code = secrets.token_hex(4).upper()
-        if db.create_session(code, hash_host_key(host_key)):
+        if db.create_session(code, hash_host_key(host_key), title):
             return schemas.SessionCreated(code=code, host_key=host_key)
     raise HTTPException(status_code=503, detail="Could not create a unique session")
 

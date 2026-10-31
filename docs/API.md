@@ -1,6 +1,6 @@
 # API contract
 
-All JSON lives under `/api`. Any change to this contract is agreed on issue #4 first. Route stubs in `src/routes.py` return dummy data in these shapes until the real logic lands.
+All JSON lives under `/api`. Contract changes are agreed in their owning issues. Route stubs in `src/routes.py` return dummy data in these shapes until the real logic lands.
 
 ## Authentication
 
@@ -11,7 +11,7 @@ All JSON lives under `/api`. Any change to this contract is agreed on issue #4 f
 
 | Method and path | Who | Body | Returns |
 | --- | --- | --- | --- |
-| `POST /api/sessions` | anyone | none | `{code, host_key}`. The key is shown once; store only its hash. |
+| `POST /api/sessions` | anyone | `{title?}` | `{code, host_key}`. Title defaults to `Untitled session` and is limited to 120 characters. The host key is shown once; store only its hash. |
 | `GET /api/sessions/{code}/state` | public | none | `{title, active_question: {id, type, text, options[{id,label}], is_open, results_visible} \| null}` |
 | `POST /api/sessions/{code}/questions` | host | `{type: "multiple_choice" \| "word_cloud", text, options[]}` | `{id}` |
 | `PATCH /api/sessions/{code}/questions/{qid}` | host | `{is_open?, results_visible?}` | `{ok}` |
