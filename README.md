@@ -4,15 +4,17 @@ CrowdPulse is a live polling app for event hosts and audiences. Run it on your c
 
 ## Quick setup
 
-You need Git and Docker Desktop with Docker Compose.
+You need Git, Docker Desktop with Docker Compose, and Python 3.
 
 ```sh
 git clone https://github.com/ewonglh/autonomous-sg-2026.git
 cd autonomous-sg-2026
-docker compose up --build -d
+python scripts/start_local.py
 ```
 
-Open <http://localhost:3000/host>, create a session, and add questions. The app finds the temporary Cloudflare link automatically and uses it for the participant link and presenter QR.
+If Python 3 is named differently on your system, use `python3 scripts/start_local.py` on macOS/Linux or `py -3 scripts/start_local.py` on Windows.
+
+The command starts Docker Compose in the background, waits for the app to become healthy, then opens <http://localhost:3000/host>. Create a session and add questions. The app finds the temporary Cloudflare link automatically and uses it for the participant link and presenter QR.
 
 The first start may take a few minutes. The temporary link changes whenever the tunnel restarts.
 
