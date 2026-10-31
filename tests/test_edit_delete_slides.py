@@ -1,8 +1,10 @@
+import asyncio
 import json
 import uuid
 
 from src import db
-from support import ApiTestCase
+from support import ApiTestCase, _call_app
+from test_live_updates import connect_websocket, disconnect_websocket, receive_event
 
 
 class EditDeleteSlideTests(ApiTestCase):
@@ -113,3 +115,19 @@ class EditDeleteSlideTests(ApiTestCase):
             path = f"{self.base}/questions/{qid}"
             self.assertEqual(self.request(method, path, wrong, body)[0], 401)
             self.assertEqual(self.request(method, f"{self.base}/questions/999", self.host, body)[0], 404)
+
+    def test_edit_and_delete_broadcast_question_changed(self):
+        qid = self.make()
+
+        async def scenario():
+            task, incoming, outgoing = await connect_websocket(f"/ws/{self.code}")
+            try:
+                path = f"{self.base}/questions/{qid}"
+                self.assertEqual((await _call_app("PATCH", path, self.host, {"text": "New?"}))[0], 200)
+                self.assertEqual(await receive_event(outgoing), "question_changed")
+                self.assertEqual((await _call_app("DELETE", path, self.host, None))[0], 200)
+                self.assertEqual(await receive_event(outgoing), "question_changed")
+            finally:
+                await disconnect_websocket(task, incoming)
+
+        asyncio.run(scenario())

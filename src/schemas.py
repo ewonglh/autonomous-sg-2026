@@ -35,23 +35,29 @@ class SessionCreated(BaseModel):
     host_key: str
 
 
+class SessionCreate(BaseModel):
+    title: str = Field(default="Untitled session", max_length=120)
+
+
 class Option(BaseModel):
     id: int
     label: str
 
 
-class ActiveQuestion(BaseModel):
+class QuestionListItem(BaseModel):
     id: int
+    position: int
     type: Literal["multiple_choice", "word_cloud"]
     text: str
     options: list[Option]
     is_open: bool
     results_visible: bool
+    response_count: int
 
 
-class SessionState(BaseModel):
-    title: str
-    active_question: ActiveQuestion | None
+class QuestionList(BaseModel):
+    active_question_id: int | None
+    questions: list[QuestionListItem]
 
 
 class QuestionCreate(BaseModel):
@@ -123,6 +129,33 @@ class OptionCount(BaseModel):
 class WordCount(BaseModel):
     word: str
     count: int
+
+
+class MultipleChoiceResults(BaseModel):
+    options: list[OptionCount]
+
+
+class WordCloudResults(BaseModel):
+    words: list[WordCount]
+
+
+PublicResults = MultipleChoiceResults | WordCloudResults
+
+
+class ActiveQuestion(BaseModel):
+    id: int
+    type: Literal["multiple_choice", "word_cloud"]
+    text: str
+    options: list[Option]
+    is_open: bool
+    results_visible: bool
+    response_count: int
+    results: PublicResults | None
+
+
+class SessionState(BaseModel):
+    title: str
+    active_question: ActiveQuestion | None
 
 
 class QuestionResults(BaseModel):
