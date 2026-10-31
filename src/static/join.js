@@ -18,8 +18,11 @@ const saved = (() => {
     return null;
   }
 })();
-if (saved) start(saved);
-else showCodeForm(codeFromPath());
+// A link or QR code with a code in it (/join/ABC123) joins straight away; otherwise ask for the code.
+const linked = codeFromPath();
+if (linked) join(linked);
+else if (saved) start(saved);
+else showCodeForm(null);
 
 function showCodeForm(prefill) {
   $("session").hidden = true;
@@ -28,13 +31,19 @@ function showCodeForm(prefill) {
   $("code-input").focus();
 }
 
-$("code-form").addEventListener("submit", async (event) => {
+$("code-form").addEventListener("submit", (event) => {
   event.preventDefault();
-  const value = $("code-input").value.trim().toUpperCase();
-  if (!value) return;
+  const value = $("code-input").value.trim();
+  if (value) join(value);
+});
+
+// Checks the session exists, remembers it for this tab, then shows it. On failure, shows the form.
+async function join(raw) {
+  const value = raw.toUpperCase();
   try {
     await request("GET", `${sessionPath(value)}/state`);
   } catch (err) {
+    showCodeForm(value);
     $("code-status").textContent = err.status === 404 ? "No session with that code. Check the screen and try again." : "Can't reach the session. Check your connection and try again.";
     return;
   }
@@ -44,7 +53,7 @@ $("code-form").addEventListener("submit", async (event) => {
     /* storage blocked: you stay joined until you reload */
   }
   start(value);
-});
+}
 
 $("leave").addEventListener("click", () => {
   try {
