@@ -41,9 +41,10 @@ class ContractTests(ApiTestCase):
 
     def test_response_needs_participant_header(self):
         path = "/api/sessions/ABC123/questions/1/responses"
-        self.assertEqual(self.request("POST", path, None, {"option_id": 1})[0], 422)
+        body = {"text": "A thought"}
+        self.assertEqual(self.request("POST", path, None, body)[0], 422)
         headers = {"x-participant-id": "11111111-1111-1111-1111-111111111111"}
-        self.assertEqual(self.request("POST", path, headers, {"option_id": 1})[0], 200)
+        self.assertEqual(self.request("POST", path, headers, body)[0], 404)
 
     def test_csv_header_columns(self):
         session = self.create_session()

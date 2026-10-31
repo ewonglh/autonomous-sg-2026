@@ -1,5 +1,6 @@
 """HTTP routes for CrowdPulse sessions and polling."""
 import secrets
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, WebSocket
 from fastapi.responses import Response
@@ -64,6 +65,29 @@ def submit_response(
     body: schemas.ResponseCreate,
     x_participant_id: str = Header(),
 ) -> schemas.Ok:
+    if body.option_id is not None or body.text is None or len(body.text) > 200:
+        raise HTTPException(status_code=422, detail="Invalid word-cloud response")
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="Response text must not be blank")
+    try:
+        participant_id = str(UUID(x_participant_id))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422, detail="Participant ID must be a UUID"
+        ) from exc
+
+    result = db.save_word_cloud_response(code, qid, participant_id, text)
+    if result == "not_found":
+        raise HTTPException(status_code=404, detail="Question not found in session")
+    if result == "wrong_type":
+        raise HTTPException(
+            status_code=409, detail="Question is not a word-cloud question"
+        )
+    if result == "closed":
+        raise HTTPException(status_code=409, detail="Question is closed")
+    if result == "limit_reached":
+        raise HTTPException(status_code=409, detail="Response limit reached")
     return schemas.Ok()
 
 
