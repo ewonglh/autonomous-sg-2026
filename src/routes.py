@@ -7,8 +7,22 @@ from fastapi.responses import Response
 
 from . import csv_export, db, schemas
 from .auth import hash_host_key, require_host_key
+from .limits import RateLimiter
 
 router = APIRouter()
+SESSION_CREATION_LIMIT = 5
+RESPONSE_SUBMISSION_LIMIT = 10
+rate_limiter = RateLimiter()
+
+
+def enforce_rate_limit(key: tuple[str, ...], limit: int) -> None:
+    retry_after = rate_limiter.check_request(key, limit)
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded",
+            headers={"Retry-After": str(retry_after)},
+        )
 
 
 def parse_participant_id(value: str) -> str:
@@ -23,6 +37,7 @@ def parse_participant_id(value: str) -> str:
 
 @router.post("/api/sessions", response_model=schemas.SessionCreated)
 def create_session() -> schemas.SessionCreated:
+    enforce_rate_limit(("session_creation",), SESSION_CREATION_LIMIT)
     host_key = secrets.token_urlsafe(32)
     for _ in range(5):
         code = secrets.token_hex(4).upper()
@@ -76,6 +91,9 @@ def submit_response(
     x_participant_id: str = Header(),
 ) -> schemas.Ok:
     participant_id = parse_participant_id(x_participant_id)
+    enforce_rate_limit(
+        ("responses", code, participant_id), RESPONSE_SUBMISSION_LIMIT
+    )
     if body.option_id is not None:
         if body.text is not None:
             raise HTTPException(
