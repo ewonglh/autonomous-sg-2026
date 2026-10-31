@@ -8,14 +8,17 @@ export class ApiError extends Error {
   }
 }
 
-// Why the server turned an answer down: "already_responded", "closed", "limit_reached" or "other".
+// Why the server turned an answer down: "already_responded", "closed", "rate_limited",
+// "limit_reached" or "other".
 // Uses the server's `code` when there is one, otherwise reads the message (the server uses status
 // 409 for several different reasons today, so the status alone is not enough).
 export function rejection(err) {
   const text = err.message || "";
-  if (err.code === "already_responded" || (err.status === 409 && /already/i.test(text))) return "already_responded";
-  if (err.code === "closed" || /closed/i.test(text)) return "closed";
-  if (err.code === "limit_reached" || /limit/i.test(text)) return "limit_reached";
+  if (["already_responded", "closed", "rate_limited", "limit_reached"].includes(err.code)) return err.code;
+  if (err.status === 429 || /rate limit/i.test(text)) return "rate_limited";
+  if (err.status === 409 && /already/i.test(text)) return "already_responded";
+  if (/closed/i.test(text)) return "closed";
+  if (/limit/i.test(text)) return "limit_reached";
   return "other";
 }
 

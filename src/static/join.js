@@ -154,7 +154,7 @@ function renderQuestion(code, q, onDone) {
       // Only "you already answered" counts as sent. A closed slide or a reached limit does not.
       if (why === "already_responded") { remember(code, q.id, remembered); onDone(); return; }
       status.className = "error";
-      status.textContent = { closed: "Voting just closed. Watch the screen for the results.", limit_reached: "You've sent the most answers allowed." }[why] || err.message;
+      status.textContent = { closed: "Voting just closed. Watch the screen for the results.", limit_reached: "You've sent the most answers allowed.", rate_limited: "That was too fast. Wait a moment and try again." }[why] || err.message;
     }
   };
 
