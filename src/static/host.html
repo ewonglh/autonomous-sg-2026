@@ -21,33 +21,21 @@
 
       <div id="console" hidden>
         <h1 id="title">Session</h1>
-        <p class="muted">Keep this page's link private: it is your host key. Bookmark it to come back.</p>
+        <p class="muted">Set up your slides here before the event. During the presentation you only use the projector screen. Keep this page's link private: it is your host key.</p>
 
         <section class="card stack">
           <h2>Share</h2>
           <div class="row">
             <input id="join-link" readonly aria-label="Participant link">
             <button id="copy-join">Copy join link</button>
-            <button id="open-present">Open presenter</button>
             <button id="export">Export CSV</button>
           </div>
           <p class="muted">Room code: <strong id="code"></strong></p>
-          <p id="share-status" aria-live="polite"></p>
-        </section>
-
-        <section class="card stack">
-          <div class="row" style="justify-content: space-between">
-            <div class="row">
-              <h2 id="now-showing">Nothing on screen yet</h2>
-              <p id="timer" class="timer" role="timer" aria-live="off" hidden></p>
-            </div>
-            <div class="row">
-              <button id="prev" type="button">◀ Previous</button>
-              <button id="next" class="primary" type="button">Next ▶</button>
-            </div>
+          <div class="row">
+            <button id="start" class="primary">Start presentation</button>
+            <span class="muted">Opens the projector screen. Press ← and → there to move between slides.</span>
           </div>
-          <p id="run-status" aria-live="polite"></p>
-          <div id="live"></div>
+          <p id="share-status" aria-live="polite"></p>
         </section>
 
         <section class="card">
