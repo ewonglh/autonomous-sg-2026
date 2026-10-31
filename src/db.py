@@ -310,6 +310,67 @@ def save_word_cloud_response(
         conn.close()
 
 
+def get_session_results(code: str) -> list[dict]:
+    conn = connect()
+    try:
+        questions = conn.execute(
+            """SELECT q.id, q.type
+               FROM questions AS q
+               JOIN sessions AS s ON s.id = q.session_id
+               WHERE s.code = ?
+               ORDER BY q.position""",
+            (code,),
+        ).fetchall()
+
+        results = []
+        for question in questions:
+            question_id = question["id"]
+            if question["type"] == "multiple_choice":
+                options = conn.execute(
+                    """SELECT o.id AS option_id, o.label, COUNT(r.id) AS count
+                       FROM options AS o
+                       LEFT JOIN responses AS r
+                         ON r.option_id = o.id AND r.question_id = o.question_id
+                       WHERE o.question_id = ?
+                       GROUP BY o.id, o.label, o.position
+                       ORDER BY o.position""",
+                    (question_id,),
+                ).fetchall()
+                results.append(
+                    {
+                        "question_id": question_id,
+                        "type": question["type"],
+                        "options": [dict(option) for option in options],
+                    }
+                )
+                continue
+
+            responses = conn.execute(
+                """SELECT text FROM responses
+                   WHERE question_id = ? AND text IS NOT NULL
+                   ORDER BY created_at, id""",
+                (question_id,),
+            ).fetchall()
+            words_by_key = {}
+            for response in responses:
+                word = response["text"].strip()
+                key = word.casefold()
+                if key not in words_by_key:
+                    words_by_key[key] = {"word": word, "count": 0}
+                words_by_key[key]["count"] += 1
+
+            results.append(
+                {
+                    "question_id": question_id,
+                    "type": question["type"],
+                    "words": list(words_by_key.values()),
+                }
+            )
+        return results
+    finally:
+        conn.close()
+
+
 def init_db() -> None:
     conn = connect()
     try:
