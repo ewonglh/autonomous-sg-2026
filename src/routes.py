@@ -22,15 +22,10 @@ def create_session() -> schemas.SessionCreated:
 
 @router.get("/api/sessions/{code}/state", response_model=schemas.SessionState)
 def get_state(code: str) -> schemas.SessionState:
-    question = schemas.ActiveQuestion(
-        id=1,
-        type="multiple_choice",
-        text="Dummy question?",
-        options=[schemas.Option(id=1, label="Yes"), schemas.Option(id=2, label="No")],
-        is_open=True,
-        results_visible=False,
-    )
-    return schemas.SessionState(title="Dummy session", active_question=question)
+    state = db.get_session_state(code)
+    if state is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return schemas.SessionState(**state)
 
 
 @router.post("/api/sessions/{code}/questions", response_model=schemas.QuestionCreated)
@@ -47,6 +42,9 @@ def create_question(
 def update_question(
     code: str, qid: int, body: schemas.QuestionUpdate, _key: str = Depends(require_host_key)
 ) -> schemas.Ok:
+    changes = body.model_dump(exclude_unset=True)
+    if changes and not db.update_question_state(code, qid, changes):
+        raise HTTPException(status_code=404, detail="Question not found")
     return schemas.Ok()
 
 
@@ -54,6 +52,8 @@ def update_question(
 def set_active(
     code: str, body: schemas.ActiveSet, _key: str = Depends(require_host_key)
 ) -> schemas.Ok:
+    if not db.set_active_question(code, body.question_id):
+        raise HTTPException(status_code=404, detail="Question not found")
     return schemas.Ok()
 
 
