@@ -53,7 +53,7 @@ class ContractTests(ApiTestCase):
         )
         self.assertTrue(headers["content-type"].startswith("text/csv"))
         self.assertEqual(
-            body.decode().strip().split(","),
+            body.decode("utf-8-sig").strip().split(","),
             ["session_code", "question_order", "question_type", "question_text",
              "answer", "participant_id", "submitted_at_utc", "qa_upvotes"],
         )
