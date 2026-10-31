@@ -31,6 +31,22 @@ class SessionState(BaseModel):
     active_question: ActiveQuestion | None
 
 
+class QuestionListItem(BaseModel):
+    id: int
+    position: int
+    type: Literal["multiple_choice", "word_cloud"]
+    text: str
+    options: list[Option]
+    is_open: bool
+    results_visible: bool
+    response_count: int
+
+
+class QuestionList(BaseModel):
+    active_question_id: int | None
+    questions: list[QuestionListItem]
+
+
 class QuestionCreate(BaseModel):
     type: Literal["multiple_choice", "word_cloud"]
     text: str

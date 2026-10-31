@@ -42,6 +42,18 @@ def get_state(code: str) -> schemas.SessionState:
     return schemas.SessionState(**state)
 
 
+@router.get(
+    "/api/sessions/{code}/questions", response_model=schemas.QuestionList
+)
+def get_questions(
+    code: str, _key: str = Depends(require_host_key)
+) -> schemas.QuestionList:
+    questions = db.get_session_questions(code)
+    if questions is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return schemas.QuestionList(**questions)
+
+
 @router.post("/api/sessions/{code}/questions", response_model=schemas.QuestionCreated)
 def create_question(
     code: str, body: schemas.QuestionCreate, _key: str = Depends(require_host_key)
