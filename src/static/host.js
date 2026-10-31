@@ -178,6 +178,17 @@ async function patchSlide(id, changes) {
   refresh();
 }
 
+async function deleteSlide(q) {
+  if (!confirm(`Delete "${q.text}"? Its responses are deleted too.`)) return;
+  try {
+    await request("DELETE", `${sessionPath(code)}/questions/${q.id}`, { hostKey });
+    saveLocal(code, localSlides(code).filter((s) => s.id !== q.id));
+  } catch (err) {
+    say(err.message, true);
+  }
+  refresh();
+}
+
 async function activateSlide(id) {
   if (id === undefined || id === null) return;
   try {
@@ -325,6 +336,7 @@ function slideItem(q, index) {
       el("select", { "aria-label": "Time limit", onchange: (event) => patchSlide(q.id, { time_limit: Number(event.target.value) || null }) }, timeOptions(q.time_limit)),
       el("label", { class: "button" }, picture ? "Change picture" : "Add picture", pictureInput),
       picture ? el("button", { onclick: () => setSlideImage(q.id, null) }, "Remove picture") : null,
+      el("button", { class: "small danger", title: "Delete this slide", onclick: () => deleteSlide(q) }, "Delete"),
     ),
   );
 }
