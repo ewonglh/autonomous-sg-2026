@@ -17,7 +17,7 @@ class PageTests(ApiTestCase):
             self.assertIn(marker, body, path)
 
     def test_static_files_are_served(self):
-        for name in ["api.js", "charts.js", "qa.js", "timer.js", "host.js", "join.js", "present.js", "style.css"]:
+        for name in ["api.js", "charts.js", "qa.js", "timer.js", "image.js", "host.js", "join.js", "present.js", "style.css"]:
             self.assertEqual(self.request("GET", f"/static/{name}")[0], 200, name)
 
     def test_home_links_to_host_and_join(self):

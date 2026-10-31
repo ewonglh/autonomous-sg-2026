@@ -20,7 +20,16 @@
       <p id="no-key" class="card error" hidden>This host link is missing its key. Open the private host link you got when you created the session.</p>
 
       <div id="console" hidden>
-        <h1 id="title">Session</h1>
+        <div class="row" style="justify-content: space-between; align-items: flex-start">
+          <h1 id="title">Session</h1>
+          <div class="row image-picker">
+            <img id="image-preview" class="image-thumb" alt="Image shown on the presenter screen" hidden>
+            <label for="image-file" class="button" id="image-add">Add image</label>
+            <input type="file" id="image-file" accept="image/*" hidden>
+            <button id="image-remove" type="button" hidden>Remove image</button>
+          </div>
+        </div>
+        <p id="image-status" class="muted" aria-live="polite" hidden></p>
         <p class="muted">Keep this page's link private: it is your host key. Bookmark it to come back.</p>
 
         <section class="card stack">
@@ -46,6 +55,7 @@
               <button id="next" class="primary" type="button">Next ▶</button>
             </div>
           </div>
+          <p id="run-status" aria-live="polite"></p>
           <div id="live"></div>
         </section>
 

@@ -49,7 +49,9 @@ export async function request(method, path, { body, hostKey, participant } = {})
     } catch {
       /* not JSON */
     }
-    throw new ApiError(res.status, typeof detail === "string" ? detail : "Request failed");
+    // FastAPI validation errors (422) come as a list of {loc, msg}; show the first message.
+    if (Array.isArray(detail)) detail = detail.map((d) => d.msg).filter(Boolean)[0];
+    throw new ApiError(res.status, typeof detail === "string" && detail ? detail : `Request failed (${res.status})`);
   }
   const type = res.headers.get("Content-Type") || "";
   return type.includes("application/json") ? res.json() : res.blob();

@@ -4,6 +4,7 @@ import { ApiError, chartOf, codeFromPath, el, hostKeyFromHash, request, sessionP
 import { renderResults } from "./charts.js";
 import { loadQa, renderQaList } from "./qa.js";
 import { Countdown, limitLabel, secondsLeftOf, TIME_LIMITS } from "./timer.js";
+import { loadImage, saveImage, showImage, shrinkImage } from "./image.js";
 
 const $ = (id) => document.getElementById(id);
 const code = codeFromPath();
@@ -90,12 +91,46 @@ function start() {
   $("q-type").addEventListener("change", typeChanged);
   $("q-time").replaceChildren(...timeOptions(0));
   countdown = new Countdown($("timer"), () => refresh());
+  setupImage();
   typeChanged();
   request("GET", `${sessionPath(code)}/state`).then((s) => {
     $("title").textContent = s.title || "Session";
     document.title = `${s.title || "Host"} · CrowdPulse`;
   }).catch(() => {});
   subscribe(code, refresh);
+}
+
+// Optional image for the presenter's top-right corner.
+function setupImage() {
+  const render = (dataUrl) => {
+    showImage($("image-preview"), dataUrl);
+    $("image-remove").hidden = !dataUrl;
+    $("image-add").textContent = dataUrl ? "Change image" : "Add image";
+  };
+  const note = (text, isError) => {
+    $("image-status").hidden = !text;
+    $("image-status").className = isError ? "error" : "muted";
+    $("image-status").textContent = text;
+  };
+  render(loadImage(code));
+  $("image-file").addEventListener("change", async (event) => {
+    const file = event.target.files[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const dataUrl = await shrinkImage(file);
+      if (!saveImage(code, dataUrl)) return note("This browser would not save the image. Try a smaller one.", true);
+      render(dataUrl);
+      note("Image added. It shows in the top-right corner of the presenter screen opened from here.");
+    } catch (err) {
+      note(err.message, true);
+    }
+  });
+  $("image-remove").onclick = () => {
+    saveImage(code, null);
+    render(null);
+    note("Image removed.");
+  };
 }
 
 function say(text, isError = false) {
@@ -133,7 +168,10 @@ async function addSlide(event) {
     refresh();
   } catch (err) {
     status.className = "error";
-    status.textContent = err.message;
+    status.textContent =
+      err.status === 422 && type !== "multiple_choice" && /type/i.test(err.message)
+        ? `The server can't make ${TYPE_LABEL[type]} slides yet (backend issue #25). Polls work.`
+        : err.message;
   }
 }
 
@@ -144,11 +182,16 @@ async function act(path, method, body, localChanges) {
   } catch (err) {
     say(err.message, true);
   }
-  refresh();
+  await refresh();
 }
 
 // Showing a timed slide opens it and (re)starts its timer on the server.
-const show = (id) => act("/active", "POST", { question_id: id });
+async function show(id) {
+  await act("/active", "POST", { question_id: id });
+  const status = $("run-status");
+  status.className = activeId === id ? "" : "error";
+  status.textContent = activeId === id ? "" : "The server accepted that but didn't change the slide on screen. It isn't saving the active slide yet (backend issue #5).";
+}
 
 function timeOptions(current) {
   return TIME_LIMITS.map((s) => el("option", { value: s, selected: s === (current || 0) }, limitLabel(s)));

@@ -6,6 +6,7 @@ import { chartOf, codeFromPath, el, hostKeyFromHash, request, sessionPath, subsc
 import { renderResults } from "./charts.js";
 import { loadQa, renderQaList } from "./qa.js";
 import { Countdown, secondsLeftOf } from "./timer.js";
+import { loadImage, showImage, watchImage } from "./image.js";
 
 const $ = (id) => document.getElementById(id);
 const code = codeFromPath();
@@ -14,6 +15,8 @@ const hostKey = hostKeyFromHash();
 $("join-url").textContent = `${location.host}/join`;
 $("join-code").textContent = code;
 const countdown = new Countdown($("timer"), () => refresh());
+showImage($("corner-image"), loadImage(code));
+watchImage(code, (dataUrl) => showImage($("corner-image"), dataUrl));
 
 async function resultsFor(q) {
   if (q.results) return { ...q.results, words: q.results.words ?? (q.type === "word_cloud" ? [] : undefined) };
