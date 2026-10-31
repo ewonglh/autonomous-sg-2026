@@ -88,6 +88,45 @@ def get_host_key_hash(code: str) -> str | None:
         conn.close()
 
 
+def create_question(
+    code: str, question_type: str, text: str, option_labels: list[str]
+) -> int | None:
+    conn = connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        session = conn.execute(
+            "SELECT id FROM sessions WHERE code = ?", (code,)
+        ).fetchone()
+        if session is None:
+            conn.rollback()
+            return None
+
+        session_id = session["id"]
+        position = conn.execute(
+            "SELECT COALESCE(MAX(position), 0) + 1 FROM questions WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()[0]
+        cursor = conn.execute(
+            "INSERT INTO questions (session_id, position, type, text) VALUES (?, ?, ?, ?)",
+            (session_id, position, question_type, text),
+        )
+        question_id = cursor.lastrowid
+        conn.executemany(
+            "INSERT INTO options (question_id, position, label) VALUES (?, ?, ?)",
+            (
+                (question_id, option_position, label)
+                for option_position, label in enumerate(option_labels, start=1)
+            ),
+        )
+        conn.commit()
+        return question_id
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def init_db() -> None:
     conn = connect()
     try:

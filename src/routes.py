@@ -37,7 +37,10 @@ def get_state(code: str) -> schemas.SessionState:
 def create_question(
     code: str, body: schemas.QuestionCreate, _key: str = Depends(require_host_key)
 ) -> schemas.QuestionCreated:
-    return schemas.QuestionCreated(id=1)
+    question_id = db.create_question(code, body.type, body.text, body.options)
+    if question_id is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return schemas.QuestionCreated(id=question_id)
 
 
 @router.patch("/api/sessions/{code}/questions/{qid}", response_model=schemas.Ok)
