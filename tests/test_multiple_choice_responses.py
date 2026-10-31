@@ -103,7 +103,7 @@ class MultipleChoiceResponseTests(ApiTestCase):
 
         status, _, _ = self.submit()
 
-        self.assertEqual(status, 409)
+        self.assertEqual(status, 403)
         self.assertEqual(self.response_count(), 0)
 
     def test_option_from_another_question_is_rejected(self):
