@@ -1,10 +1,11 @@
 // Host setup page: create a session, set up slides (poll with bar or donut, word cloud, Q&A) with
 // their time limit and picture, put them in order, then start the presentation. During the
 // presentation the host only uses the projector screen (present.js); this page is not needed.
-import { chartOf, codeFromPath, el, hostKeyFromHash, request, sessionPath } from "./api.js";
+import { chartOf, codeFromPath, el, hostKeyFromHash, request, sessionPath, subscribe } from "./api.js";
 import { limitLabel, TIME_LIMITS } from "./timer.js";
 import { imageOf, saveImage, shrinkImage, uploadImage } from "./image.js";
 import { byPosition, loadSlides, localSlides, notFound, patchLocal, saveLocal, showSlide } from "./slides.js";
+import { renderLiveDashboard, renderResultsDashboard, setupHostDashboard } from "./host-dashboard.js";
 
 const $ = (id) => document.getElementById(id);
 const code = codeFromPath();
@@ -13,6 +14,8 @@ const TYPE_LABEL = { multiple_choice: "Poll", word_cloud: "Word cloud", qa: "Q&A
 const PLACEHOLDER = { multiple_choice: "Which talk should we extend?", word_cloud: "One word for this quarter?", qa: "Ask the leadership team anything" };
 let slides = [];
 let activeId = null;
+let activeQuestion = null;
+let dashboard;
 
 if (!code) showCreate();
 else if (!hostKey) $("no-key").hidden = false;
@@ -34,6 +37,7 @@ function showCreate() {
 
 function start() {
   $("console").hidden = false;
+  dashboard = setupHostDashboard((tab) => tab === "results" && refreshResults());
   const joinUrl = `${location.origin}/join/${encodeURIComponent(code)}`;
   $("code").textContent = code;
   $("join-link").value = joinUrl;
@@ -57,6 +61,10 @@ function start() {
     document.title = `${s.title || "Host"} · CrowdPulse`;
   }).catch(() => {});
   refresh();
+  subscribe(code, (type) => {
+    if (["question_changed", "results_changed", "qa_changed"].includes(type)) refresh();
+    else if (type === "poll") refresh({ updateSlides: false });
+  }, 3000);
 }
 
 function say(text, isError = false) {
@@ -71,7 +79,7 @@ async function startPresentation() {
   window.open(`/present/${encodeURIComponent(code)}#key=${encodeURIComponent(hostKey)}`, "_blank", "noopener");
   try {
     if (activeId === null) await showSlide(code, hostKey, slides[0].id);
-    say("Presenter opened. On the projector press ← and → to move between slides.");
+    say("Presenter opened. You can also control the live slide here.");
   } catch (err) {
     say(err.message, true);
   }
@@ -145,6 +153,16 @@ async function patchSlide(id, changes) {
     patchLocal(code, id, changes);
   } catch (err) {
     say(err.message, true);
+  }
+  refresh();
+}
+
+async function activateSlide(id) {
+  if (id === undefined || id === null) return;
+  try {
+    await showSlide(code, hostKey, id);
+  } catch (err) {
+    return say(err.message, true);
   }
   refresh();
 }
@@ -279,6 +297,7 @@ function slideItem(q, index) {
     el(
       "div",
       { class: "row", style: "margin-top:8px" },
+      el("button", { disabled: q.id === activeId, onclick: () => activateSlide(q.id) }, q.id === activeId ? "On screen" : "Show slide"),
       el("button", { "aria-label": "Move up", title: "Move up", disabled: index === 0, onclick: () => moveTo(index, index - 1) }, "↑"),
       el("button", { "aria-label": "Move down", title: "Move down", disabled: index === slides.length - 1, onclick: () => moveTo(index, index + 1) }, "↓"),
       chartPicker,
@@ -289,14 +308,40 @@ function slideItem(q, index) {
   );
 }
 
-async function refresh() {
+async function refresh({ updateSlides = true } = {}) {
   try {
-    const loaded = await loadSlides(code, hostKey);
+    const [loaded, state] = await Promise.all([
+      loadSlides(code, hostKey),
+      request("GET", `${sessionPath(code)}/state`),
+    ]);
     slides = byPosition(loaded.list);
-    activeId = loaded.active;
-    $("questions").replaceChildren(...(slides.length ? slides.map(slideItem) : [el("li", { class: "muted" }, "No slides yet. Add one below.")]));
+    activeQuestion = state.active_question;
+    activeId = loaded.active ?? activeQuestion?.id ?? null;
+    if (updateSlides) $("questions").replaceChildren(...(slides.length ? slides.map(slideItem) : [el("li", { class: "muted" }, "No slides yet. Add one below.")]));
+    renderLiveDashboard({
+      question: activeQuestion,
+      slides,
+      code,
+      onPrev: () => activateSlide(slides[slides.findIndex((slide) => slide.id === activeId) - 1]?.id),
+      onNext: () => activateSlide(slides[slides.findIndex((slide) => slide.id === activeId) + 1]?.id),
+      onToggleVoting: () => activeQuestion && patchSlide(activeQuestion.id, { is_open: !activeQuestion.is_open }),
+      onToggleResults: () => activeQuestion && patchSlide(activeQuestion.id, { results_visible: !activeQuestion.results_visible }),
+      onTimerDone: () => refresh({ updateSlides: false }),
+    });
+    if (dashboard.currentTab() === "results") refreshResults();
   } catch (err) {
     $("questions").replaceChildren(el("li", { class: "error" }, err.status === 401 ? "Host key not accepted." : "Can't reach the server. Try again in a moment."));
+    $("live-preview").replaceChildren(el("p", { class: "error" }, "Can't reach the server. Try again in a moment."));
+  }
+}
+
+async function refreshResults() {
+  if (!slides.length) return renderResultsDashboard($("results-list"), slides, []);
+  try {
+    const data = await request("GET", `${sessionPath(code)}/results`, { hostKey });
+    renderResultsDashboard($("results-list"), slides, data.results || []);
+  } catch (err) {
+    $("results-list").replaceChildren(el("p", { class: "card error" }, `Could not load results: ${err.message}`));
   }
 }
 

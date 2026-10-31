@@ -20,58 +20,90 @@
       <p id="no-key" class="card error" hidden>This host link is missing its key. Open the private host link you got when you created the session.</p>
 
       <div id="console" hidden>
-        <h1 id="title">Session</h1>
-        <p class="muted">Set up your slides here before the event. During the presentation you only use the projector screen. Keep this page's link private: it is your host key.</p>
+        <header class="host-header">
+          <div>
+            <p class="eyebrow">LIVE SESSION</p>
+            <h1 id="title">Session</h1>
+          </div>
+          <button id="start" class="primary">Open presenter</button>
+        </header>
 
-        <section class="card stack">
-          <h2>Share</h2>
-          <div class="row">
-            <input id="join-link" readonly aria-label="Participant link">
-            <button id="copy-join">Copy join link</button>
-            <button id="export">Export CSV</button>
+        <section class="host-share card" aria-label="Audience link">
+          <strong>Join</strong>
+          <strong id="code" class="room-code"></strong>
+          <input id="join-link" readonly aria-label="Participant link">
+          <button id="copy-join">Copy link</button>
+        </section>
+        <p id="share-status" class="host-notice" aria-live="polite"></p>
+
+        <nav class="host-tabs" role="tablist" aria-label="Host dashboard">
+          <button id="tab-live" role="tab" aria-selected="true" aria-controls="panel-live">Live</button>
+          <button id="tab-slides" role="tab" aria-selected="false" aria-controls="panel-slides" tabindex="-1">Slides</button>
+          <button id="tab-results" role="tab" aria-selected="false" aria-controls="panel-results" tabindex="-1">Results</button>
+        </nav>
+
+        <section id="panel-live" class="tab-panel" role="tabpanel" aria-labelledby="tab-live">
+          <div class="host-live-grid">
+            <article class="card live-card">
+              <div id="live-meta" class="live-meta"></div>
+              <span id="live-timer" class="timer live-timer" role="timer" aria-live="off" hidden></span>
+              <div id="live-preview" class="live-preview"></div>
+            </article>
+            <aside class="card live-controls" aria-label="Live controls">
+              <p id="live-position" class="muted"></p>
+              <button id="previous-slide">Previous</button>
+              <button id="next-slide">Next</button>
+              <hr>
+              <button id="toggle-voting" class="primary">Open voting</button>
+              <button id="toggle-results">Reveal results</button>
+            </aside>
           </div>
-          <p class="muted">Room code: <strong id="code"></strong></p>
-          <div class="row">
-            <button id="start" class="primary">Start presentation</button>
-            <span class="muted">Opens the projector screen. Press ← and → there to move between slides.</span>
-          </div>
-          <p id="share-status" aria-live="polite"></p>
         </section>
 
-        <section class="card">
-          <h2>Slides</h2>
-          <p class="muted">To reorder, press and hold a slide, then drag it to its place. The ↑ ↓ buttons work too.</p>
-          <p id="image-status" class="muted" aria-live="polite" hidden></p>
-          <ol id="questions" class="qlist"></ol>
-        </section>
+        <section id="panel-slides" class="tab-panel" role="tabpanel" aria-labelledby="tab-slides" hidden>
+          <section class="card">
+            <h2>Slides</h2>
+            <p class="muted">Drag to reorder, or use the arrow buttons.</p>
+            <p id="image-status" class="muted" aria-live="polite" hidden></p>
+            <ol id="questions" class="qlist"></ol>
+          </section>
 
-        <section class="card">
-          <h2>Add a slide</h2>
-          <form id="add" class="stack">
-            <label for="q-type" class="muted">Type</label>
-            <select id="q-type">
-              <option value="multiple_choice">Poll</option>
-              <option value="word_cloud">Word cloud</option>
-              <option value="qa">Q&amp;A</option>
-            </select>
-            <label for="q-text" class="muted" id="q-text-label">Question</label>
-            <input id="q-text" maxlength="300" required placeholder="Which talk should we extend?">
-            <label for="q-time" class="muted">Time limit (voting is open while the slide is on screen; with a limit it closes and shows results when time is up)</label>
-            <select id="q-time"></select>
-            <label for="q-image" class="muted">Picture (optional, shown to the right of the question)</label>
-            <input type="file" id="q-image" accept="image/*">
-            <div id="poll-fields" class="stack">
-              <label for="q-options" class="muted">Options, one per line</label>
-              <textarea id="q-options" rows="4" placeholder="Design systems&#10;Shipping faster"></textarea>
-              <label for="q-chart" class="muted">Show results as</label>
-              <select id="q-chart">
-                <option value="bar">Bar chart</option>
-                <option value="donut">Donut chart</option>
+          <section class="card">
+            <h2>Add a slide</h2>
+            <form id="add" class="stack">
+              <label for="q-type" class="muted">Type</label>
+              <select id="q-type">
+                <option value="multiple_choice">Poll</option>
+                <option value="word_cloud">Word cloud</option>
+                <option value="qa">Q&amp;A</option>
               </select>
-            </div>
-            <button class="primary" type="submit">Add slide</button>
-            <p id="add-status" aria-live="polite"></p>
-          </form>
+              <label for="q-text" class="muted" id="q-text-label">Question</label>
+              <input id="q-text" maxlength="300" required placeholder="Which talk should we extend?">
+              <label for="q-time" class="muted">Time limit</label>
+              <select id="q-time"></select>
+              <label for="q-image" class="muted">Picture (optional)</label>
+              <input type="file" id="q-image" accept="image/*">
+              <div id="poll-fields" class="stack">
+                <label for="q-options" class="muted">Options, one per line</label>
+                <textarea id="q-options" rows="4" placeholder="Design systems&#10;Shipping faster"></textarea>
+                <label for="q-chart" class="muted">Results style</label>
+                <select id="q-chart">
+                  <option value="bar">Bar chart</option>
+                  <option value="donut">Donut chart</option>
+                </select>
+              </div>
+              <button class="primary" type="submit">Add slide</button>
+              <p id="add-status" aria-live="polite"></p>
+            </form>
+          </section>
+        </section>
+
+        <section id="panel-results" class="tab-panel" role="tabpanel" aria-labelledby="tab-results" hidden>
+          <div class="results-heading">
+            <div><h2>Results</h2><p class="muted">Response totals by slide</p></div>
+            <button id="export">Download CSV</button>
+          </div>
+          <div id="results-list"></div>
         </section>
       </div>
     </main>
