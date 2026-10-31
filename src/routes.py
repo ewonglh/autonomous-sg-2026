@@ -12,7 +12,7 @@ from fastapi import (
 )
 from fastapi.responses import Response
 
-from . import csv_export, db, schemas
+from . import csv_export, db, question_order, schemas
 from .codes import RoomCode
 from .auth import hash_host_key, require_host_key
 from .errors import ApiError
@@ -112,7 +112,12 @@ def get_state(code: RoomCode) -> schemas.SessionState:
     if state is None:
         raise HTTPException(status_code=404, detail="Session not found")
     active_question = state["active_question"]
-    if active_question and active_question["results_visible"]:
+    # Q&A slides ignore results_visible; their items come from the Q&A routes.
+    if (
+        active_question
+        and active_question["results_visible"]
+        and active_question["type"] != "qa"
+    ):
         result = next(
             (
                 item
@@ -156,7 +161,9 @@ def get_questions(
 async def create_question(
     code: RoomCode, body: schemas.QuestionCreate, _key: str = Depends(require_host_key)
 ) -> schemas.QuestionCreated:
-    question_id = db.create_question(code, body.type, body.text, body.options)
+    question_id = db.create_question(
+        code, body.type, body.text, body.options, body.chart
+    )
     if question_id is None:
         raise HTTPException(status_code=404, detail="Session not found")
     await publish_event(code, "question_changed")
@@ -190,6 +197,27 @@ async def update_question(
     response = schemas.Ok()
     db.touch_session_activity(code)
     return response
+
+
+@router.put(
+    "/api/sessions/{code}/questions/order",
+    response_model=schemas.Ok,
+    dependencies=[Depends(reject_expired_session)],
+)
+async def reorder_questions(
+    code: RoomCode, body: schemas.QuestionOrder, _key: str = Depends(require_host_key)
+) -> schemas.Ok:
+    result = question_order.reorder_questions(code, body.question_ids)
+    if result == "not_found":
+        raise HTTPException(status_code=404, detail="Session not found")
+    if result == "mismatch":
+        raise HTTPException(
+            status_code=422,
+            detail="question_ids must list every question in the session exactly once",
+        )
+    await publish_event(code, "question_changed")
+    db.touch_session_activity(code)
+    return schemas.Ok()
 
 
 @router.delete(
