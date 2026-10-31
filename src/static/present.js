@@ -1,11 +1,15 @@
 // Presenter screen for a projector. It only shows the active slide, exactly as the host set it up:
 // a poll (bar or donut), a word cloud, or Q&A. Every phone shows the same slide.
+// The presenter moves between slides with ← and → (or Page Up/Down on a clicker). That needs the
+// host key, so open this screen with "Start presentation" on the host page.
 // Results come from /state once the host reveals them (issue #11). Opened from the host screen,
 // this page also has the host key in its fragment and can read /results directly.
 import { chartOf, codeFromPath, el, hostKeyFromHash, request, sessionPath, subscribe } from "./api.js";
 import { renderResults } from "./charts.js";
 import { loadQa, renderQaList } from "./qa.js";
 import { Countdown, secondsLeftOf } from "./timer.js";
+import { loadSlides, showSlide } from "./slides.js";
+import { imageOf, showImage, watchImage } from "./image.js";
 
 const $ = (id) => document.getElementById(id);
 const code = codeFromPath();
@@ -14,6 +18,43 @@ const hostKey = hostKeyFromHash();
 $("join-url").textContent = `${location.host}/join`;
 $("join-code").textContent = code;
 const countdown = new Countdown($("timer"), () => refresh());
+watchImage(code, () => refresh());
+
+// ← → ↑ ↓ and Page Up/Down hop between slides. Held-down keys and fast clicks are ignored while a
+// move is in progress, so the presenter never skips a slide by accident.
+let moving = false;
+const STEP = { ArrowRight: 1, ArrowDown: 1, PageDown: 1, ArrowLeft: -1, ArrowUp: -1, PageUp: -1 };
+document.addEventListener("keydown", async (event) => {
+  const delta = STEP[event.key];
+  if (!delta || !hostKey || event.ctrlKey || event.metaKey || event.altKey) return;
+  event.preventDefault();
+  if (moving) return;
+  moving = true;
+  try {
+    const { list, active } = await loadSlides(code, hostKey);
+    const index = list.findIndex((q) => q.id === active);
+    const target = index === -1 ? (delta > 0 ? list[0] : null) : list[index + delta];
+    if (target) await showSlide(code, hostKey, target.id);
+  } catch {
+    /* the next refresh shows the real state */
+  } finally {
+    moving = false;
+    refresh();
+  }
+});
+
+// The slide's number ("3") in the top-right corner, only on the presenter's own screen.
+async function showSlideNumber() {
+  if (!hostKey) return;
+  try {
+    const { list, active } = await loadSlides(code, hostKey);
+    const index = list.findIndex((q) => q.id === active);
+    $("slide-number").hidden = index === -1;
+    $("slide-number").textContent = String(index + 1);
+  } catch {
+    $("slide-number").hidden = true;
+  }
+}
 
 async function resultsFor(q) {
   if (q.results) return { ...q.results, words: q.results.words ?? (q.type === "word_cloud" ? [] : undefined) };
@@ -46,7 +87,9 @@ async function refresh() {
   }
   document.title = `${state.title || "Present"} · CrowdPulse`;
   const q = state.active_question;
+  showSlideNumber();
   countdown.set(secondsLeftOf(q));
+  showImage($("slide-image"), imageOf(code, q));
   if (!q) {
     $("question").textContent = state.title || "Waiting for the host…";
     $("count").textContent = "";

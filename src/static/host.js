@@ -1,9 +1,10 @@
-// Host console: create a session, set up slides (poll with bar or donut, word cloud, Q&A),
-// put them in order, step through them, watch results, export CSV.
-import { ApiError, chartOf, codeFromPath, el, hostKeyFromHash, request, sessionPath, subscribe } from "./api.js";
-import { renderResults } from "./charts.js";
-import { loadQa, renderQaList } from "./qa.js";
-import { Countdown, limitLabel, secondsLeftOf, TIME_LIMITS } from "./timer.js";
+// Host setup page: create a session, set up slides (poll with bar or donut, word cloud, Q&A) with
+// their time limit and picture, put them in order, then start the presentation. During the
+// presentation the host only uses the projector screen (present.js); this page is not needed.
+import { chartOf, codeFromPath, el, hostKeyFromHash, request, sessionPath } from "./api.js";
+import { limitLabel, TIME_LIMITS } from "./timer.js";
+import { imageOf, saveImage, shrinkImage, uploadImage } from "./image.js";
+import { byPosition, loadSlides, localSlides, notFound, patchLocal, saveLocal, showSlide } from "./slides.js";
 
 const $ = (id) => document.getElementById(id);
 const code = codeFromPath();
@@ -12,8 +13,6 @@ const TYPE_LABEL = { multiple_choice: "Poll", word_cloud: "Word cloud", qa: "Q&A
 const PLACEHOLDER = { multiple_choice: "Which talk should we extend?", word_cloud: "One word for this quarter?", qa: "Ask the leadership team anything" };
 let slides = [];
 let activeId = null;
-let lastListKey = "";
-let countdown = null;
 
 if (!code) showCreate();
 else if (!hostKey) $("no-key").hidden = false;
@@ -33,41 +32,6 @@ function showCreate() {
   });
 }
 
-// Slides come from GET /questions (issue #11). Until that exists, keep a local copy.
-const localKey = `crowdpulse-host-${code}`;
-function localSlides() {
-  try {
-    return JSON.parse(localStorage.getItem(localKey)) || [];
-  } catch {
-    return [];
-  }
-}
-function saveLocal(list) {
-  try {
-    localStorage.setItem(localKey, JSON.stringify(list));
-  } catch {
-    /* storage blocked */
-  }
-}
-function patchLocal(id, changes) {
-  saveLocal(localSlides().map((q) => (q.id === id ? { ...q, ...changes } : q)));
-}
-const notFound = (err) => err instanceof ApiError && [404, 405].includes(err.status);
-const byPosition = (list) => [...list].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
-
-async function loadSlides() {
-  try {
-    const data = await request("GET", `${sessionPath(code)}/questions`, { hostKey });
-    return { list: byPosition(data.questions), active: data.active_question_id };
-  } catch (err) {
-    if (!notFound(err)) throw err;
-    const state = await request("GET", `${sessionPath(code)}/state`);
-    const a = state.active_question;
-    const list = localSlides().map((q) => (a && q.id === a.id ? { ...q, is_open: a.is_open, results_visible: a.results_visible } : q));
-    return { list: byPosition(list), active: a ? a.id : null };
-  }
-}
-
 function start() {
   $("console").hidden = false;
   const joinUrl = `${location.origin}/join/${encodeURIComponent(code)}`;
@@ -81,26 +45,37 @@ function start() {
       $("join-link").select();
     }
   };
-  // The presenter runs on the host's own screen, so it may carry the key in its fragment.
-  $("open-present").onclick = () => window.open(`/present/${encodeURIComponent(code)}#key=${encodeURIComponent(hostKey)}`, "_blank", "noopener");
+  $("start").onclick = startPresentation;
   $("export").onclick = exportCsv;
-  $("prev").onclick = () => step(-1);
-  $("next").onclick = () => step(1);
+  enableDragReorder($("questions"));
   $("add").addEventListener("submit", addSlide);
   $("q-type").addEventListener("change", typeChanged);
   $("q-time").replaceChildren(...timeOptions(0));
-  countdown = new Countdown($("timer"), () => refresh());
   typeChanged();
   request("GET", `${sessionPath(code)}/state`).then((s) => {
     $("title").textContent = s.title || "Session";
     document.title = `${s.title || "Host"} · CrowdPulse`;
   }).catch(() => {});
-  subscribe(code, refresh);
+  refresh();
 }
 
 function say(text, isError = false) {
   $("share-status").className = isError ? "error" : "success";
   $("share-status").textContent = text;
+}
+
+// Opens the projector screen (it carries the host key so ← and → can move between slides).
+// Slide 1 goes on screen first if nothing is showing yet.
+async function startPresentation() {
+  if (!slides.length) return say("Add at least one slide first.", true);
+  window.open(`/present/${encodeURIComponent(code)}#key=${encodeURIComponent(hostKey)}`, "_blank", "noopener");
+  try {
+    if (activeId === null) await showSlide(code, hostKey, slides[0].id);
+    say("Presenter opened. On the projector press ← and → to move between slides.");
+  } catch (err) {
+    say(err.message, true);
+  }
+  refresh();
 }
 
 function typeChanged() {
@@ -124,132 +99,205 @@ async function addSlide(event) {
   const body = { type, text, options, time_limit: Number($("q-time").value) || null, ...(type === "multiple_choice" ? { chart: $("q-chart").value } : {}) };
   try {
     const { id } = await request("POST", `${sessionPath(code)}/questions`, { body, hostKey });
-    const local = localSlides();
-    saveLocal([...local, { ...body, id, options: options.map((label, i) => ({ id: i + 1, label })), is_open: false, results_visible: false, position: local.length + 1 }]);
+    const local = localSlides(code);
+    saveLocal(code, [...local, { ...body, id, options: options.map((label, i) => ({ id: i + 1, label })), is_open: false, results_visible: false, position: local.length + 1 }]);
+    const picture = $("q-image").files[0];
     $("q-text").value = "";
     $("q-options").value = "";
+    $("q-image").value = "";
     status.className = "success";
     status.textContent = `Slide ${slides.length + 1} added.`;
-    refresh();
+    if (picture) await setSlideImage(id, picture);
+    else refresh();
   } catch (err) {
     status.className = "error";
-    status.textContent = err.message;
+    status.textContent =
+      err.status === 422 && type !== "multiple_choice" && /type/i.test(err.message)
+        ? `The server can't make ${TYPE_LABEL[type]} slides yet (backend issue #25). Polls work.`
+        : err.message;
   }
 }
 
-async function act(path, method, body, localChanges) {
+// Each slide can have a picture that shows to the right of its question on the projector.
+function imageNote(text, isError = false) {
+  $("image-status").hidden = !text;
+  $("image-status").className = isError ? "error" : "muted";
+  $("image-status").textContent = text;
+}
+
+// file = a File to set, or null to remove the picture.
+async function setSlideImage(id, file) {
   try {
-    await request(method, `${sessionPath(code)}${path}`, { body, hostKey });
-    if (localChanges) patchLocal(localChanges.id, localChanges.changes);
+    const dataUrl = file ? await shrinkImage(file) : null;
+    if (!saveImage(code, id, dataUrl)) throw new Error("This browser would not save the image. Try a smaller one.");
+    await uploadImage(code, id, hostKey, dataUrl);
+    imageNote(file ? "Picture saved for that slide." : "Picture removed.");
+  } catch (err) {
+    imageNote(err.message, true);
+  } finally {
+    refresh();
+  }
+}
+
+async function patchSlide(id, changes) {
+  try {
+    await request("PATCH", `${sessionPath(code)}/questions/${id}`, { body: changes, hostKey });
+    patchLocal(code, id, changes);
   } catch (err) {
     say(err.message, true);
   }
   refresh();
 }
 
-// Showing a timed slide opens it and (re)starts its timer on the server.
-const show = (id) => act("/active", "POST", { question_id: id });
-
 function timeOptions(current) {
   return TIME_LIMITS.map((s) => el("option", { value: s, selected: s === (current || 0) }, limitLabel(s)));
 }
 
-function step(delta) {
-  const index = slides.findIndex((q) => q.id === activeId);
-  const next = slides[index === -1 ? 0 : index + delta];
-  if (next) show(next.id);
-}
-
-// Moves a slide up (-1) or down (+1) and saves the new order.
-async function move(index, delta) {
+// Moves the slide at position `from` to position `to` (both 0-based) and saves the new order.
+async function moveTo(from, to) {
   const ids = slides.map((q) => q.id);
-  [ids[index], ids[index + delta]] = [ids[index + delta], ids[index]];
+  ids.splice(to, 0, ids.splice(from, 1)[0]);
   try {
     await request("PUT", `${sessionPath(code)}/questions/order`, { body: { question_ids: ids }, hostKey });
   } catch (err) {
     if (!notFound(err)) return say(err.message, true);
   }
-  saveLocal(localSlides().map((q) => ({ ...q, position: ids.indexOf(q.id) + 1 })));
+  saveLocal(code, localSlides(code).map((q) => ({ ...q, position: ids.indexOf(q.id) + 1 })));
   refresh();
 }
 
+// Press and hold a slide (about half a second), then drag it to its place in the queue.
+// Works with a mouse or a finger. A quick click or tap, or pressing a button, behaves as usual.
+const HOLD_MS = 450;
+function enableDragReorder(list) {
+  list.addEventListener("pointerdown", (event) => {
+    const item = event.target.closest("li[data-index]");
+    if (!item || (event.pointerType === "mouse" && event.button !== 0)) return;
+    if (event.target.closest("button, select, input, textarea, label, a")) return;
+    const from = Number(item.dataset.index);
+    const startY = event.clientY;
+    const startScroll = window.scrollY;
+    let lastY = startY;
+    let to = from;
+    let state = "waiting"; // waiting -> dragging -> done
+    const items = () => [...list.querySelectorAll("li[data-index]")];
+    const others = () => items().filter((li) => li !== item);
+    const stopScroll = (e) => e.preventDefault();
+
+    // Where the slide would land: before the first other slide whose middle is below the pointer.
+    const markDrop = () => {
+      items().forEach((li) => li.classList.remove("drop-above", "drop-below"));
+      const rest = others();
+      const found = rest.findIndex((li) => lastY < li.getBoundingClientRect().top + li.offsetHeight / 2);
+      to = found === -1 ? rest.length : found;
+      if (to === from) return;
+      if (to < rest.length) rest[to].classList.add("drop-above");
+      else rest[rest.length - 1].classList.add("drop-below");
+    };
+    // Moves the slide with the pointer and shows where it would land.
+    const place = () => {
+      item.style.transform = `translateY(${lastY - startY + (window.scrollY - startScroll)}px)`;
+      markDrop();
+    };
+    const follow = () => {
+      if (state !== "dragging") return;
+      // Keep the page scrolling while the slide is held near its top or bottom edge.
+      if (lastY < 70) window.scrollBy(0, -12);
+      else if (lastY > window.innerHeight - 70) window.scrollBy(0, 12);
+      place();
+      requestAnimationFrame(follow);
+    };
+    const begin = () => {
+      state = "dragging";
+      item.classList.add("dragging");
+      document.body.classList.add("reordering");
+      try {
+        item.setPointerCapture(event.pointerId);
+      } catch {
+        /* pointer already gone */
+      }
+      document.addEventListener("touchmove", stopScroll, { passive: false });
+      follow();
+    };
+    const move = (e) => {
+      lastY = e.clientY;
+      if (state === "waiting" && Math.abs(e.clientY - startY) > 8) finish(false); // it is a scroll, not a drag
+      else if (state === "dragging") place();
+    };
+    const up = () => finish(true);
+    const cancel = () => finish(false);
+    const blockMenu = (e) => e.preventDefault(); // a long press on a phone would open a menu
+    const timer = setTimeout(begin, HOLD_MS);
+
+    function finish(drop) {
+      clearTimeout(timer);
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", up);
+      document.removeEventListener("pointercancel", cancel);
+      document.removeEventListener("touchmove", stopScroll);
+      document.removeEventListener("contextmenu", blockMenu);
+      if (state === "dragging") {
+        item.classList.remove("dragging");
+        item.style.transform = "";
+        items().forEach((li) => li.classList.remove("drop-above", "drop-below"));
+        document.body.classList.remove("reordering");
+        if (drop && to !== from) moveTo(from, to);
+      }
+      state = "done";
+    }
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", up);
+    document.addEventListener("pointercancel", cancel);
+    document.addEventListener("contextmenu", blockMenu);
+  });
+}
+
 function slideItem(q, index) {
-  const isActive = q.id === activeId;
-  const patch = (changes) => act(`/questions/${q.id}`, "PATCH", changes, { id: q.id, changes });
-  const toggle = (field, on, off) => el("button", { onclick: () => patch({ [field]: !q[field] }) }, q[field] ? off : on);
+  const picture = imageOf(code, q);
+  const pictureInput = el("input", { type: "file", accept: "image/*", hidden: true, onchange: (event) => { const file = event.target.files[0]; event.target.value = ""; if (file) setSlideImage(q.id, file); } });
   const chartPicker =
     q.type === "multiple_choice"
       ? el(
           "select",
-          { "aria-label": "Show results as", onchange: (event) => patch({ chart: event.target.value }) },
+          { "aria-label": "Show results as", onchange: (event) => patchSlide(q.id, { chart: event.target.value }) },
           el("option", { value: "bar", selected: chartOf(q) === "bar" }, "Bar chart"),
           el("option", { value: "donut", selected: chartOf(q) === "donut" }, "Donut chart"),
         )
       : null;
-  const count = typeof q.response_count === "number" ? el("span", { class: "muted" }, q.type === "qa" ? `${q.response_count} questions` : `${q.response_count} responses`) : null;
   return el(
     "li",
-    { class: isActive ? "active" : "" },
+    { class: q.id === activeId ? "active" : "", "data-index": String(index) },
     el(
       "div",
       { class: "row" },
       el("span", { class: "slide-num" }, String(index + 1)),
       el("strong", { class: "slide-text" }, q.text),
+      picture ? el("img", { class: "image-thumb", src: picture, alt: "Picture for this slide" }) : null,
       el("span", { class: "badge" }, TYPE_LABEL[q.type] || q.type),
-      isActive ? el("span", { class: "badge on" }, "On screen") : null,
+      q.id === activeId ? el("span", { class: "badge on" }, "On screen") : null,
     ),
     el(
       "div",
       { class: "row", style: "margin-top:8px" },
-      el("button", { "aria-label": "Move up", title: "Move up", disabled: index === 0, onclick: () => move(index, -1) }, "↑"),
-      el("button", { "aria-label": "Move down", title: "Move down", disabled: index === slides.length - 1, onclick: () => move(index, 1) }, "↓"),
-      isActive ? null : el("button", { class: "primary", onclick: () => show(q.id) }, "Show"),
-      isActive && q.time_limit ? el("button", { onclick: () => show(q.id) }, "Restart timer") : null,
-      toggle("is_open", q.type === "qa" ? "Open questions" : "Open voting", q.type === "qa" ? "Close questions" : "Close voting"),
-      q.type === "qa" ? null : toggle("results_visible", "Reveal results", "Hide results"),
+      el("button", { "aria-label": "Move up", title: "Move up", disabled: index === 0, onclick: () => moveTo(index, index - 1) }, "↑"),
+      el("button", { "aria-label": "Move down", title: "Move down", disabled: index === slides.length - 1, onclick: () => moveTo(index, index + 1) }, "↓"),
       chartPicker,
-      el("select", { "aria-label": "Time limit", onchange: (event) => patch({ time_limit: Number(event.target.value) || null }) }, timeOptions(q.time_limit)),
-      count,
+      el("select", { "aria-label": "Time limit", onchange: (event) => patchSlide(q.id, { time_limit: Number(event.target.value) || null }) }, timeOptions(q.time_limit)),
+      el("label", { class: "button" }, picture ? "Change picture" : "Add picture", pictureInput),
+      picture ? el("button", { onclick: () => setSlideImage(q.id, null) }, "Remove picture") : null,
     ),
   );
 }
 
 async function refresh() {
   try {
-    const loaded = await loadSlides();
-    slides = loaded.list;
+    const loaded = await loadSlides(code, hostKey);
+    slides = byPosition(loaded.list);
     activeId = loaded.active;
-    // Redraw the list only when something changed, so an open dropdown is not closed.
-    const listKey = JSON.stringify([slides, activeId], (k, v) => (k === "seconds_left" ? undefined : v));
-    if (listKey !== lastListKey) {
-      lastListKey = listKey;
-      $("questions").replaceChildren(...(slides.length ? slides.map(slideItem) : [el("li", { class: "muted" }, "No slides yet. Add one below.")]));
-    }
-    const index = slides.findIndex((q) => q.id === activeId);
-    const active = slides[index];
-    $("now-showing").textContent = active ? `On screen: ${index + 1} of ${slides.length} · ${active.text}` : "Nothing on screen yet";
-    countdown.set(secondsLeftOf(active));
-    $("prev").disabled = index <= 0;
-    $("next").disabled = index >= slides.length - 1 || !slides.length;
-    $("next").textContent = index === -1 ? "Start ▶" : "Next ▶";
-    await renderLive(active);
+    $("questions").replaceChildren(...(slides.length ? slides.map(slideItem) : [el("li", { class: "muted" }, "No slides yet. Add one below.")]));
   } catch (err) {
-    $("live").replaceChildren(el("p", { class: "error" }, err.status === 401 ? "Host key not accepted." : "Can't reach the server. Retrying…"));
+    $("questions").replaceChildren(el("li", { class: "error" }, err.status === 401 ? "Host key not accepted." : "Can't reach the server. Try again in a moment."));
   }
-}
-
-async function renderLive(active) {
-  if (!active) {
-    $("live").replaceChildren(el("p", { class: "muted" }, "Press Start to put slide 1 on screen."));
-    return;
-  }
-  if (active.type === "qa") {
-    const items = await loadQa(code, active.id).catch(() => []);
-    $("live").replaceChildren(renderQaList(items));
-    return;
-  }
-  const data = await request("GET", `${sessionPath(code)}/results`, { hostKey });
-  $("live").replaceChildren(renderResults(data.results.find((r) => r.question_id === active.id), chartOf(active)));
 }
 
 async function exportCsv() {
