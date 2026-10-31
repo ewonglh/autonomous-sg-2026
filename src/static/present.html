@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Present · CrowdPulse</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <main class="wide present">
+      <p class="join-hint">Join at <strong id="join-url"></strong> · code <strong id="join-code"></strong></p>
+      <h1 id="question">Waiting for the host…</h1>
+      <div class="row">
+        <p id="timer" class="timer" role="timer" aria-live="off" hidden></p>
+        <p id="count" class="count muted"></p>
+      </div>
+      <section id="results" class="card"></section>
+    </main>
+    <script type="module" src="/static/present.js"></script>
+  </body>
+</html>
