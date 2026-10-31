@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from .db import init_db
 from .pages import STATIC_DIR
 from .pages import router as pages_router
+from .qa import router as qa_router
 from .routes import router
 
 
@@ -18,6 +19,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="CrowdPulse", lifespan=lifespan)
 app.include_router(router)
+app.include_router(qa_router)
 app.include_router(pages_router)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
