@@ -1,3 +1,4 @@
+import json
 import sqlite3
 
 from src import db
@@ -111,3 +112,96 @@ class SessionResultsDatabaseTests(ApiTestCase):
         self.assertEqual([result["question_id"] for result in results], [first_id, second_id])
         self.assertEqual(results[0]["words"], [{"word": "Saved", "count": 1}])
         self.assertEqual(results[1]["options"][1]["count"], 1)
+
+
+class SessionResultsRouteTests(ApiTestCase):
+    def setUp(self):
+        super().setUp()
+        self.session = self.create_session()
+        self.code = self.session["code"]
+        self.host = {"authorization": f"Bearer {self.session['host_key']}"}
+        self.session_path = f"/api/sessions/{self.code}"
+
+    def create_question(self, question_type, text, options=None):
+        body = {"type": question_type, "text": text}
+        if options is not None:
+            body["options"] = options
+        status, response, _ = self.request(
+            "POST", f"{self.session_path}/questions", self.host, body
+        )
+        self.assertEqual(status, 200)
+        return json.loads(response)["id"]
+
+    def option_ids(self, question_id):
+        conn = db.connect()
+        try:
+            return [
+                row["id"]
+                for row in conn.execute(
+                    "SELECT id FROM options WHERE question_id = ? ORDER BY position",
+                    (question_id,),
+                )
+            ]
+        finally:
+            conn.close()
+
+    def test_results_route_requires_valid_host_key(self):
+        path = f"{self.session_path}/results"
+        self.assertEqual(self.request("GET", path)[0], 401)
+        self.assertEqual(
+            self.request("GET", path, {"authorization": "Bearer wrong"})[0], 401
+        )
+
+        status, body, _ = self.request("GET", path, self.host)
+
+        self.assertEqual((status, json.loads(body)), (200, {"results": []}))
+
+    def test_results_route_returns_saved_choice_and_word_totals(self):
+        choice_id = self.create_question(
+            "multiple_choice", "Choose one?", ["Yes", "No"]
+        )
+        word_id = self.create_question("word_cloud", "Where?", [])
+        yes_id, no_id = self.option_ids(choice_id)
+
+        self.request(
+            "POST",
+            f"{self.session_path}/questions/{choice_id}/responses",
+            {"x-participant-id": "11111111-1111-4111-8111-111111111111"},
+            {"option_id": yes_id},
+        )
+        for participant_id, text in [
+            ("22222222-2222-4222-8222-222222222222", "  Singapore "),
+            ("33333333-3333-4333-8333-333333333333", "SINGAPORE"),
+        ]:
+            self.request(
+                "POST",
+                f"{self.session_path}/questions/{word_id}/responses",
+                {"x-participant-id": participant_id},
+                {"text": text},
+            )
+
+        status, body, _ = self.request(
+            "GET", f"{self.session_path}/results", self.host
+        )
+
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            json.loads(body),
+            {
+                "results": [
+                    {
+                        "question_id": choice_id,
+                        "type": "multiple_choice",
+                        "options": [
+                            {"option_id": yes_id, "label": "Yes", "count": 1},
+                            {"option_id": no_id, "label": "No", "count": 0},
+                        ],
+                    },
+                    {
+                        "question_id": word_id,
+                        "type": "word_cloud",
+                        "words": [{"word": "Singapore", "count": 2}],
+                    },
+                ]
+            },
+        )
