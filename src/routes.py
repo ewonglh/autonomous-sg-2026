@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, WebSocket
 from fastapi.responses import Response
 
 from . import csv_export, db, schemas
+from .codes import RoomCode
 from .auth import hash_host_key, require_host_key
 from .errors import ApiError
 from .limits import RateLimiter
@@ -75,7 +76,7 @@ def create_session() -> schemas.SessionCreated:
 
 
 @router.get("/api/sessions/{code}/state", response_model=schemas.SessionState)
-def get_state(code: str) -> schemas.SessionState:
+def get_state(code: RoomCode) -> schemas.SessionState:
     state = db.get_session_state(code)
     if state is None:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -84,7 +85,7 @@ def get_state(code: str) -> schemas.SessionState:
 
 @router.post("/api/sessions/{code}/questions", response_model=schemas.QuestionCreated)
 def create_question(
-    code: str, body: schemas.QuestionCreate, _key: str = Depends(require_host_key)
+    code: RoomCode, body: schemas.QuestionCreate, _key: str = Depends(require_host_key)
 ) -> schemas.QuestionCreated:
     question_id = db.create_question(code, body.type, body.text, body.options)
     if question_id is None:
@@ -94,7 +95,7 @@ def create_question(
 
 @router.patch("/api/sessions/{code}/questions/{qid}", response_model=schemas.Ok)
 def update_question(
-    code: str, qid: int, body: schemas.QuestionUpdate, _key: str = Depends(require_host_key)
+    code: RoomCode, qid: int, body: schemas.QuestionUpdate, _key: str = Depends(require_host_key)
 ) -> schemas.Ok:
     changes = body.model_dump(exclude_unset=True)
     if changes and not db.update_question_state(code, qid, changes):
@@ -104,7 +105,7 @@ def update_question(
 
 @router.post("/api/sessions/{code}/active", response_model=schemas.Ok)
 def set_active(
-    code: str, body: schemas.ActiveSet, _key: str = Depends(require_host_key)
+    code: RoomCode, body: schemas.ActiveSet, _key: str = Depends(require_host_key)
 ) -> schemas.Ok:
     if not db.set_active_question(code, body.question_id):
         raise HTTPException(status_code=404, detail="Question not found")
@@ -113,7 +114,7 @@ def set_active(
 
 @router.post("/api/sessions/{code}/questions/{qid}/responses", response_model=schemas.Ok)
 def submit_response(
-    code: str,
+    code: RoomCode,
     qid: int,
     body: schemas.ResponseCreate,
     x_participant_id: str = Header(),
@@ -151,13 +152,13 @@ def submit_response(
     response_model=schemas.Results,
     response_model_exclude_none=True,
 )
-def get_results(code: str, _key: str = Depends(require_host_key)) -> schemas.Results:
+def get_results(code: RoomCode, _key: str = Depends(require_host_key)) -> schemas.Results:
     results = [schemas.QuestionResults(**result) for result in db.get_session_results(code)]
     return schemas.Results(results=results)
 
 
 @router.get("/api/sessions/{code}/export.csv", response_class=Response)
-def export_csv(code: str, _key: str = Depends(require_host_key)) -> Response:
+def export_csv(code: RoomCode, _key: str = Depends(require_host_key)) -> Response:
     conn = db.connect()
     try:
         session = conn.execute("SELECT id FROM sessions WHERE code = ?", (code,)).fetchone()
@@ -191,7 +192,7 @@ def export_csv(code: str, _key: str = Depends(require_host_key)) -> Response:
 
 
 @router.websocket("/ws/{code}")
-async def live_updates(websocket: WebSocket, code: str) -> None:
+async def live_updates(websocket: WebSocket, code: RoomCode) -> None:
     # Stub: sends one example message, then closes. Real version broadcasts changes.
     await websocket.accept()
     await websocket.send_json({"type": "question_changed"})
