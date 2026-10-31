@@ -180,6 +180,5 @@ function renderQuestion(code, q, onDone) {
     input,
     el("button", { class: "primary", type: "submit" }, "Send"),
   );
-  setTimeout(() => input.focus(), 0);
   return el("div", { class: "stack" }, heading, list, form, status);
 }
