@@ -13,7 +13,9 @@ from fastapi import (
 from fastapi.responses import Response
 
 from . import csv_export, db, question_order, schemas
+from .codes import RoomCode
 from .auth import hash_host_key, require_host_key
+from .errors import ApiError
 from .limits import RateLimiter
 
 router = APIRouter()
@@ -31,6 +33,33 @@ def enforce_rate_limit(key: tuple[str, ...], limit: int) -> None:
             detail="Rate limit exceeded",
             headers={"Retry-After": str(retry_after)},
         )
+
+
+REJECTED_RESPONSES = {
+    "not_found": (404, "Question not found in session", "not_found"),
+    "closed": (403, "Question is closed", "closed"),
+    "limit_reached": (429, "Response limit reached", "limit_reached"),
+    "duplicate": (409, "Participant has already responded", "already_responded"),
+    "wrong_type": (422, "Question does not accept this kind of response", "wrong_type"),
+    "invalid_option": (422, "Option does not belong to this question", "invalid_option"),
+}
+
+
+def reject_response(result: str, details: dict[str, str] | None = None) -> None:
+    """Raise the error for a refused response; do nothing if it was saved.
+
+    `details` replaces the default readable text for a result (per answer type).
+    """
+    if result in REJECTED_RESPONSES:
+        status, detail, code = REJECTED_RESPONSES[result]
+        raise ApiError(status, (details or {}).get(result, detail), code)
+
+
+MULTIPLE_CHOICE_DETAILS = {
+    "not_found": "Session or question not found",
+    "wrong_type": "Question does not accept multiple-choice responses",
+}
+WORD_CLOUD_DETAILS = {"wrong_type": "Question does not accept text responses"}
 
 
 async def publish_event(code: str, event: str) -> None:
@@ -54,7 +83,7 @@ def parse_participant_id(value: str) -> str:
         ) from exc
 
 
-def reject_expired_session(code: str) -> None:
+def reject_expired_session(code: RoomCode) -> None:
     if db.session_is_expired(code):
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -78,7 +107,7 @@ def create_session(
     response_model=schemas.SessionState,
     dependencies=[Depends(reject_expired_session)],
 )
-def get_state(code: str) -> schemas.SessionState:
+def get_state(code: RoomCode) -> schemas.SessionState:
     state = db.get_session_state(code)
     if state is None:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -114,7 +143,7 @@ def get_state(code: str) -> schemas.SessionState:
     dependencies=[Depends(reject_expired_session)],
 )
 def get_questions(
-    code: str, _key: str = Depends(require_host_key)
+    code: RoomCode, _key: str = Depends(require_host_key)
 ) -> schemas.QuestionList:
     questions = db.get_session_questions(code)
     if questions is None:
@@ -130,7 +159,7 @@ def get_questions(
     dependencies=[Depends(reject_expired_session)],
 )
 async def create_question(
-    code: str, body: schemas.QuestionCreate, _key: str = Depends(require_host_key)
+    code: RoomCode, body: schemas.QuestionCreate, _key: str = Depends(require_host_key)
 ) -> schemas.QuestionCreated:
     question_id = db.create_question(
         code, body.type, body.text, body.options, body.chart
@@ -149,12 +178,21 @@ async def create_question(
     dependencies=[Depends(reject_expired_session)],
 )
 async def update_question(
-    code: str, qid: int, body: schemas.QuestionUpdate, _key: str = Depends(require_host_key)
+    code: RoomCode, qid: int, body: schemas.QuestionUpdate, _key: str = Depends(require_host_key)
 ) -> schemas.Ok:
     changes = body.model_dump(exclude_unset=True)
+    text, options = changes.pop("text", None), changes.pop("options", None)
+    if text is not None or options is not None:
+        result = db.edit_question(code, qid, text, options)
+        if result == "not_found":
+            raise HTTPException(status_code=404, detail="Question not found")
+        if result == "wrong_type":
+            raise ApiError(422, "Only multiple-choice questions have options", "wrong_type")
+        if result == "has_responses":
+            raise ApiError(409, "Options cannot change once someone has answered", "has_responses")
     if changes and not db.update_question_state(code, qid, changes):
         raise HTTPException(status_code=404, detail="Question not found")
-    if changes:
+    if changes or text is not None or options is not None:
         await publish_event(code, "question_changed")
     response = schemas.Ok()
     db.touch_session_activity(code)
@@ -167,7 +205,7 @@ async def update_question(
     dependencies=[Depends(reject_expired_session)],
 )
 async def reorder_questions(
-    code: str, body: schemas.QuestionOrder, _key: str = Depends(require_host_key)
+    code: RoomCode, body: schemas.QuestionOrder, _key: str = Depends(require_host_key)
 ) -> schemas.Ok:
     result = question_order.reorder_questions(code, body.question_ids)
     if result == "not_found":
@@ -182,13 +220,28 @@ async def reorder_questions(
     return schemas.Ok()
 
 
+@router.delete(
+    "/api/sessions/{code}/questions/{qid}",
+    response_model=schemas.Ok,
+    dependencies=[Depends(reject_expired_session)],
+)
+async def delete_question(
+    code: RoomCode, qid: int, _key: str = Depends(require_host_key)
+) -> schemas.Ok:
+    if not db.delete_question(code, qid):
+        raise HTTPException(status_code=404, detail="Question not found")
+    await publish_event(code, "question_changed")
+    db.touch_session_activity(code)
+    return schemas.Ok()
+
+
 @router.post(
     "/api/sessions/{code}/active",
     response_model=schemas.Ok,
     dependencies=[Depends(reject_expired_session)],
 )
 async def set_active(
-    code: str, body: schemas.ActiveSet, _key: str = Depends(require_host_key)
+    code: RoomCode, body: schemas.ActiveSet, _key: str = Depends(require_host_key)
 ) -> schemas.Ok:
     if not db.set_active_question(code, body.question_id):
         raise HTTPException(status_code=404, detail="Question not found")
@@ -204,7 +257,7 @@ async def set_active(
     dependencies=[Depends(reject_expired_session)],
 )
 async def submit_response(
-    code: str,
+    code: RoomCode,
     qid: int,
     body: schemas.ResponseCreate,
     x_participant_id: str = Header(),
@@ -222,28 +275,10 @@ async def submit_response(
         result = db.save_multiple_choice_response(
             code, qid, participant_id, body.option_id
         )
-        if result == "not_found":
-            raise HTTPException(status_code=404, detail="Session or question not found")
-        if result == "wrong_type":
-            raise HTTPException(
-                status_code=422,
-                detail="Question does not accept multiple-choice responses",
-            )
-        if result == "closed":
-            raise HTTPException(status_code=409, detail="Question is closed")
-        if result == "invalid_option":
-            raise HTTPException(
-                status_code=422, detail="Option does not belong to this question"
-            )
-        if result == "duplicate":
-            raise HTTPException(
-                status_code=409, detail="Participant has already responded"
-            )
-        if result == "accepted":
-            await publish_event(code, "results_changed")
-        response = schemas.Ok()
+        reject_response(result, MULTIPLE_CHOICE_DETAILS)
+        await publish_event(code, "results_changed")
         db.touch_session_activity(code)
-        return response
+        return schemas.Ok()
 
     if body.text is None or len(body.text) > 200:
         raise HTTPException(status_code=422, detail="Invalid word-cloud response")
@@ -252,21 +287,10 @@ async def submit_response(
         raise HTTPException(status_code=422, detail="Response text must not be blank")
 
     result = db.save_word_cloud_response(code, qid, participant_id, text)
-    if result == "not_found":
-        raise HTTPException(status_code=404, detail="Question not found in session")
-    if result == "wrong_type":
-        raise HTTPException(
-            status_code=422, detail="Question does not accept text responses"
-        )
-    if result == "closed":
-        raise HTTPException(status_code=409, detail="Question is closed")
-    if result == "limit_reached":
-        raise HTTPException(status_code=409, detail="Response limit reached")
-    if result == "saved":
-        await publish_event(code, "results_changed")
-    response = schemas.Ok()
+    reject_response(result, WORD_CLOUD_DETAILS)
+    await publish_event(code, "results_changed")
     db.touch_session_activity(code)
-    return response
+    return schemas.Ok()
 
 
 @router.get(
@@ -275,7 +299,7 @@ async def submit_response(
     response_model_exclude_none=True,
     dependencies=[Depends(reject_expired_session)],
 )
-def get_results(code: str, _key: str = Depends(require_host_key)) -> schemas.Results:
+def get_results(code: RoomCode, _key: str = Depends(require_host_key)) -> schemas.Results:
     results = [schemas.QuestionResults(**result) for result in db.get_session_results(code)]
     response = schemas.Results(results=results)
     db.touch_session_activity(code)
@@ -287,7 +311,7 @@ def get_results(code: str, _key: str = Depends(require_host_key)) -> schemas.Res
     response_class=Response,
     dependencies=[Depends(reject_expired_session)],
 )
-def export_csv(code: str, _key: str = Depends(require_host_key)) -> Response:
+def export_csv(code: RoomCode, _key: str = Depends(require_host_key)) -> Response:
     conn = db.connect()
     try:
         session = conn.execute("SELECT id FROM sessions WHERE code = ?", (code,)).fetchone()
@@ -323,7 +347,7 @@ def export_csv(code: str, _key: str = Depends(require_host_key)) -> Response:
 
 
 @router.websocket("/ws/{code}")
-async def live_updates(websocket: WebSocket, code: str) -> None:
+async def live_updates(websocket: WebSocket, code: RoomCode) -> None:
     await websocket.accept()
     connections = live_connections.setdefault(code, set())
     connections.add(websocket)

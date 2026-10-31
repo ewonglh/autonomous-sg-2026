@@ -15,8 +15,9 @@ All JSON lives under `/api`. Contract changes are agreed in their owning issues.
 | `GET /api/sessions/{code}/state` | public | none | `{title, active_question: {id, type, text, options[{id,label}], is_open, results_visible, response_count, results, chart} \| null}`. `results` is `null` until revealed; then it contains `options[{option_id,label,count}]` or `words[{word,count}]`. |
 | `GET /api/sessions/{code}/questions` | host | none | `{active_question_id, questions: [{id, position, type, text, options[{id,label}], is_open, results_visible, response_count, chart}]}`. Ordered by position. |
 | `POST /api/sessions/{code}/questions` | host | `{type: "multiple_choice" \| "word_cloud" \| "qa", text, options[], chart?}` | `{id}` |
-| `PATCH /api/sessions/{code}/questions/{qid}` | host | `{is_open?, results_visible?, chart?}` | `{ok}` |
+| `PATCH /api/sessions/{code}/questions/{qid}` | host | `{is_open?, results_visible?, chart?, text?, options?[]}`; options only change while the slide has no responses (else 409 `has_responses`) | `{ok}` |
 | `PUT /api/sessions/{code}/questions/order` | host | `{question_ids: [3, 1, 2]}` | `{ok}`; 422 unless the list is exactly the session's question ids |
+| `DELETE /api/sessions/{code}/questions/{qid}` | host | none | `{ok}`. Removes the slide with its options and responses, clears the screen if it was showing, renumbers the rest 1..N |
 | `POST /api/sessions/{code}/active` | host | `{question_id}` | `{ok}` |
 | `POST /api/sessions/{code}/questions/{qid}/responses` | participant | `{option_id \| text}` | `{ok}` |
 | `GET /api/sessions/{code}/questions/{qid}/qa` | public (sends `X-Participant-Id` if it has one) | none | `{items: [{id, text, upvotes, upvoted_by_me}]}`, most upvoted first |
@@ -37,7 +38,18 @@ Notes:
 - Q&A routes return 404 if `{qid}` is not a `qa` slide in this session (or the item is not on that slide). Each Q&A slide has its own list. Upvoting works even when the slide is closed. Text is stored and returned as plain text; screens must not render it as HTML.
 - A `qa` slide's `response_count` is the number of audience questions on it.
 - The WebSocket also sends `{"type": "qa_changed"}` after a new Q&A question, an upvote or a removed upvote.
-- Responses: a repeat vote for multiple choice returns 409. Word cloud allows up to 3 responses per participant.
+- Responses: a repeat vote for multiple choice is rejected (`already_responded`). Word cloud allows up to 3 responses per participant.
+- Rejected answers on `POST .../responses` reply `{"detail": "<readable text>", "code": "<code>"}`. Clients should read `code` first and fall back to `detail`:
+
+  | Situation | Status | `code` |
+  | --- | --- | --- |
+  | This person already voted | 409 | `already_responded` |
+  | The slide is closed | 403 | `closed` |
+  | Word limit reached | 429 | `limit_reached` |
+  | Wrong kind of answer for the slide | 422 | `wrong_type` |
+  | Slide not found in this session | 404 | `not_found` |
+  | Option does not belong to the slide | 422 | `invalid_option` |
+
 - Slide limits (422 if broken): question text is trimmed, 1 to 300 characters; poll options are trimmed, 2 to 10 of them, 1 to 100 characters each, no duplicates ignoring case.
 - Host routes return 401 without a bearer key.
 - After a WebSocket message, clients refetch `state`.

@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, Header, HTTPException
 
 from . import db, qa_store, schemas
+from .codes import RoomCode
 from .routes import (
     RESPONSE_SUBMISSION_LIMIT,
     enforce_rate_limit,
@@ -25,7 +26,7 @@ def participant(code: str, x_participant_id: str) -> str:
 
 @router.get("", response_model=schemas.QaList)
 def list_items(
-    code: str, qid: int, x_participant_id: str | None = Header(default=None)
+    code: RoomCode, qid: int, x_participant_id: str | None = Header(default=None)
 ) -> schemas.QaList:
     participant_id = parse_participant_id(x_participant_id) if x_participant_id else None
     items = qa_store.list_items(code, qid, participant_id)
@@ -37,7 +38,7 @@ def list_items(
 
 @router.post("", response_model=schemas.QuestionCreated)
 async def add_item(
-    code: str, qid: int, body: schemas.QaCreate, x_participant_id: str = Header()
+    code: RoomCode, qid: int, body: schemas.QaCreate, x_participant_id: str = Header()
 ) -> schemas.QuestionCreated:
     result = qa_store.add_item(code, qid, participant(code, x_participant_id), body.text)
     if result == "not_found":
@@ -51,7 +52,7 @@ async def add_item(
 
 @router.post("/{item_id}/upvote", response_model=schemas.Ok)
 async def upvote(
-    code: str, qid: int, item_id: int, x_participant_id: str = Header()
+    code: RoomCode, qid: int, item_id: int, x_participant_id: str = Header()
 ) -> schemas.Ok:
     result = qa_store.add_upvote(code, qid, item_id, participant(code, x_participant_id))
     if result == "not_found":
@@ -65,7 +66,7 @@ async def upvote(
 
 @router.delete("/{item_id}/upvote", response_model=schemas.Ok)
 async def remove_upvote(
-    code: str, qid: int, item_id: int, x_participant_id: str = Header()
+    code: RoomCode, qid: int, item_id: int, x_participant_id: str = Header()
 ) -> schemas.Ok:
     participant_id = participant(code, x_participant_id)
     if not qa_store.remove_upvote(code, qid, item_id, participant_id):

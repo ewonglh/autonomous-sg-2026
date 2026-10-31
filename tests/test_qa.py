@@ -132,3 +132,18 @@ class QaTests(ApiTestCase):
             {"question_ids": [self.slide]},
         )
         self.assertEqual(status, 404)
+
+    def test_deleting_qa_slide_removes_its_questions(self):
+        item_id = json.loads(self.ask()[1])["id"]
+        self.vote("POST", item_id, self.bob)
+        status, _, _ = self.request(
+            "DELETE", f"{self.base}/questions/{self.slide}", self.host
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(self.request("GET", self.qa_path())[0], 404)
+
+    def test_room_code_any_case(self):
+        self.ask()
+        path = self.qa_path().replace(self.session["code"], self.session["code"].lower())
+        status, raw, _ = self.request("GET", path)
+        self.assertEqual((status, len(json.loads(raw)["items"])), (200, 1))

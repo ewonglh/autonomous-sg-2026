@@ -4,6 +4,7 @@ import hmac
 from fastapi import Header, HTTPException
 
 from . import db
+from .codes import RoomCode
 
 
 def hash_host_key(host_key: str) -> str:
@@ -11,7 +12,7 @@ def hash_host_key(host_key: str) -> str:
 
 
 def require_host_key(
-    code: str, authorization: str | None = Header(default=None)
+    code: RoomCode, authorization: str | None = Header(default=None)
 ) -> None:
     scheme, separator, host_key = (authorization or "").partition(" ")
     if not separator or scheme.lower() != "bearer" or not host_key.strip():
