@@ -1,10 +1,12 @@
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 QuestionType = Literal["multiple_choice", "word_cloud", "qa"]
 ChartStyle = Literal["bar", "donut"]
+# Seconds a timed slide stays open; None means no limit.
+TimeLimit = Annotated[int, Field(ge=5, le=3600)] | None
 MAX_TEXT_LENGTH = 300
 MAX_OPTIONS = 10
 MAX_OPTION_LENGTH = 100
@@ -56,6 +58,8 @@ class QuestionListItem(BaseModel):
     results_visible: bool
     response_count: int
     chart: ChartStyle | None = None
+    time_limit: int | None = None
+    seconds_left: int | None = None
 
 
 class QuestionList(BaseModel):
@@ -68,6 +72,7 @@ class QuestionCreate(BaseModel):
     text: str
     options: list[str] = Field(default_factory=list)
     chart: ChartStyle | None = None
+    time_limit: TimeLimit = None
 
     @field_validator("text")
     @classmethod
@@ -100,10 +105,13 @@ class QuestionUpdate(BaseModel):
     chart: ChartStyle | None = None
     text: str | None = None
     options: list[str] | None = None
+    time_limit: TimeLimit = None
 
     @model_validator(mode="after")
     def require_values_for_fields_sent(self) -> "QuestionUpdate":
-        if any(getattr(self, field) is None for field in self.model_fields_set):
+        # time_limit may be null: that removes the limit.
+        sent = self.model_fields_set - {"time_limit"}
+        if any(getattr(self, field) is None for field in sent):
             raise ValueError("Question fields must not be null")
         if self.text is not None:
             self.text = clean_text(self.text)
@@ -163,6 +171,8 @@ class ActiveQuestion(BaseModel):
     response_count: int
     results: PublicResults | None
     chart: ChartStyle | None = None
+    time_limit: int | None = None
+    seconds_left: int | None = None
 
 
 class SessionState(BaseModel):

@@ -12,7 +12,7 @@ from fastapi import (
 )
 from fastapi.responses import Response
 
-from . import csv_export, db, question_order, schemas
+from . import csv_export, db, question_order, schemas, timers
 from .codes import RoomCode
 from .auth import hash_host_key, require_host_key
 from .errors import ApiError
@@ -83,6 +83,12 @@ def parse_participant_id(value: str) -> str:
         ) from exc
 
 
+async def close_finished_timers() -> None:
+    """Close slides whose time is up and tell their screens. Runs before reads and votes."""
+    for code in timers.close_expired():
+        await publish_event(code, "question_changed")
+
+
 def reject_expired_session(code: RoomCode) -> None:
     if db.session_is_expired(code):
         raise HTTPException(status_code=404, detail="Session not found")
@@ -105,13 +111,15 @@ def create_session(
 @router.get(
     "/api/sessions/{code}/state",
     response_model=schemas.SessionState,
-    dependencies=[Depends(reject_expired_session)],
+    dependencies=[Depends(reject_expired_session), Depends(close_finished_timers)],
 )
 def get_state(code: RoomCode) -> schemas.SessionState:
     state = db.get_session_state(code)
     if state is None:
         raise HTTPException(status_code=404, detail="Session not found")
     active_question = state["active_question"]
+    if active_question:
+        timers.add_seconds_left(active_question)
     # Q&A slides ignore results_visible; their items come from the Q&A routes.
     if (
         active_question
@@ -140,7 +148,7 @@ def get_state(code: RoomCode) -> schemas.SessionState:
 @router.get(
     "/api/sessions/{code}/questions",
     response_model=schemas.QuestionList,
-    dependencies=[Depends(reject_expired_session)],
+    dependencies=[Depends(reject_expired_session), Depends(close_finished_timers)],
 )
 def get_questions(
     code: RoomCode, _key: str = Depends(require_host_key)
@@ -148,6 +156,8 @@ def get_questions(
     questions = db.get_session_questions(code)
     if questions is None:
         raise HTTPException(status_code=404, detail="Session not found")
+    for question in questions["questions"]:
+        timers.add_seconds_left(question)
     response = schemas.QuestionList(**questions)
     db.touch_session_activity(code)
     return response
@@ -162,7 +172,7 @@ async def create_question(
     code: RoomCode, body: schemas.QuestionCreate, _key: str = Depends(require_host_key)
 ) -> schemas.QuestionCreated:
     question_id = db.create_question(
-        code, body.type, body.text, body.options, body.chart
+        code, body.type, body.text, body.options, body.chart, body.time_limit
     )
     if question_id is None:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -192,6 +202,10 @@ async def update_question(
             raise ApiError(409, "Options cannot change once someone has answered", "has_responses")
     if changes and not db.update_question_state(code, qid, changes):
         raise HTTPException(status_code=404, detail="Question not found")
+    if changes.get("is_open") is False:
+        timers.stop_timer(code, qid)
+    elif changes.get("is_open") and timers.is_showing(code, qid):
+        timers.start_timer(code, qid)
     if changes or text is not None or options is not None:
         await publish_event(code, "question_changed")
     response = schemas.Ok()
@@ -245,6 +259,7 @@ async def set_active(
 ) -> schemas.Ok:
     if not db.set_active_question(code, body.question_id):
         raise HTTPException(status_code=404, detail="Question not found")
+    timers.start_timer(code, body.question_id)
     await publish_event(code, "question_changed")
     response = schemas.Ok()
     db.touch_session_activity(code)
@@ -254,7 +269,7 @@ async def set_active(
 @router.post(
     "/api/sessions/{code}/questions/{qid}/responses",
     response_model=schemas.Ok,
-    dependencies=[Depends(reject_expired_session)],
+    dependencies=[Depends(reject_expired_session), Depends(close_finished_timers)],
 )
 async def submit_response(
     code: RoomCode,
