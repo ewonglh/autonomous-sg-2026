@@ -17,8 +17,9 @@ CREATE TABLE IF NOT EXISTS questions (
     id INTEGER PRIMARY KEY,
     session_id INTEGER NOT NULL REFERENCES sessions(id),
     position INTEGER NOT NULL,
-    type TEXT NOT NULL CHECK (type IN ('multiple_choice', 'word_cloud')),
+    type TEXT NOT NULL CHECK (type IN ('multiple_choice', 'word_cloud', 'qa')),
     text TEXT NOT NULL,
+    chart TEXT CHECK (chart IN ('bar', 'donut')),
     is_open INTEGER NOT NULL DEFAULT 1,
     results_visible INTEGER NOT NULL DEFAULT 0
 );
@@ -96,8 +97,14 @@ def get_host_key_hash(code: str) -> str | None:
 
 
 def create_question(
-    code: str, question_type: str, text: str, option_labels: list[str]
+    code: str,
+    question_type: str,
+    text: str,
+    option_labels: list[str],
+    chart: str | None = None,
 ) -> int | None:
+    if question_type == "multiple_choice":
+        chart = chart or "bar"
     conn = connect()
     try:
         conn.execute("BEGIN IMMEDIATE")
@@ -114,8 +121,9 @@ def create_question(
             (session_id,),
         ).fetchone()[0]
         cursor = conn.execute(
-            "INSERT INTO questions (session_id, position, type, text) VALUES (?, ?, ?, ?)",
-            (session_id, position, question_type, text),
+            """INSERT INTO questions (session_id, position, type, text, chart)
+               VALUES (?, ?, ?, ?, ?)""",
+            (session_id, position, question_type, text, chart),
         )
         question_id = cursor.lastrowid
         conn.executemany(
@@ -192,20 +200,26 @@ def save_multiple_choice_response(
         conn.close()
 
 
-def update_question_state(code: str, question_id: int, changes: dict[str, bool]) -> bool:
-    allowed_fields = {"is_open", "results_visible"}
+def update_question_state(
+    code: str, question_id: int, changes: dict[str, bool | str]
+) -> bool:
+    allowed_fields = {"is_open", "results_visible", "chart"}
     if not changes or not set(changes).issubset(allowed_fields):
         raise ValueError("Question state changes must contain valid flags")
 
     assignments = ", ".join(f"{field} = ?" for field in changes)
-    values = [int(value) for value in changes.values()]
+    values = [
+        value if field == "chart" else int(value) for field, value in changes.items()
+    ]
+    # Only polls have a chart style.
+    poll_only = " AND type = 'multiple_choice'" if "chart" in changes else ""
     conn = connect()
     try:
         cursor = conn.execute(
             f"""UPDATE questions SET {assignments}
                 WHERE id = ? AND session_id = (
                     SELECT id FROM sessions WHERE code = ?
-                )""",
+                ){poll_only}""",
             (*values, question_id, code),
         )
         conn.commit()
@@ -263,7 +277,7 @@ def get_session_questions(code: str) -> dict | None:
 
         rows = conn.execute(
             """SELECT questions.id, questions.position, questions.type, questions.text,
-                      questions.is_open, questions.results_visible,
+                      questions.is_open, questions.results_visible, questions.chart,
                       (SELECT COUNT(*) FROM responses
                        WHERE responses.question_id = questions.id) AS response_count
                FROM questions WHERE questions.session_id = ?
@@ -282,6 +296,7 @@ def get_session_questions(code: str) -> dict | None:
                 "is_open": bool(row["is_open"]),
                 "results_visible": bool(row["results_visible"]),
                 "response_count": row["response_count"],
+                "chart": row["chart"],
             }
             for row in rows
         ]
@@ -300,7 +315,8 @@ def get_session_state(code: str) -> dict | None:
             """SELECT sessions.title, questions.id AS question_id, questions.type,
                       questions.text, questions.is_open, questions.results_visible,
                       (SELECT COUNT(*) FROM responses
-                       WHERE responses.question_id = questions.id) AS response_count
+                       WHERE responses.question_id = questions.id) AS response_count,
+                      questions.chart
                FROM sessions
                LEFT JOIN questions
                  ON questions.id = sessions.active_question_id
@@ -323,6 +339,7 @@ def get_session_state(code: str) -> dict | None:
                 "results_visible": bool(session["results_visible"]),
                 "response_count": session["response_count"],
                 "results": None,
+                "chart": session["chart"],
             }
         return {"title": session["title"], "active_question": active_question}
     finally:
@@ -408,6 +425,10 @@ def get_session_results(code: str) -> list[dict]:
                         "options": [dict(option) for option in options],
                     }
                 )
+                continue
+            if question["type"] == "qa":
+                # Audience questions and upvotes arrive with #19.
+                results.append({"question_id": question_id, "type": question["type"]})
                 continue
 
             responses = conn.execute(

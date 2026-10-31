@@ -3,6 +3,10 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
+QuestionType = Literal["multiple_choice", "word_cloud", "qa"]
+ChartStyle = Literal["bar", "donut"]
+
+
 class SessionCreated(BaseModel):
     code: str
     host_key: str
@@ -20,12 +24,13 @@ class Option(BaseModel):
 class QuestionListItem(BaseModel):
     id: int
     position: int
-    type: Literal["multiple_choice", "word_cloud"]
+    type: QuestionType
     text: str
     options: list[Option]
     is_open: bool
     results_visible: bool
     response_count: int
+    chart: ChartStyle | None = None
 
 
 class QuestionList(BaseModel):
@@ -34,9 +39,10 @@ class QuestionList(BaseModel):
 
 
 class QuestionCreate(BaseModel):
-    type: Literal["multiple_choice", "word_cloud"]
+    type: QuestionType
     text: str
     options: list[str] = Field(default_factory=list)
+    chart: ChartStyle | None = None
 
     @field_validator("text")
     @classmethod
@@ -58,8 +64,10 @@ class QuestionCreate(BaseModel):
     def validate_options_for_type(self) -> "QuestionCreate":
         if self.type == "multiple_choice" and len(self.options) < 2:
             raise ValueError("Multiple-choice questions need at least two options")
-        if self.type == "word_cloud" and self.options:
-            raise ValueError("Word-cloud questions do not accept choice options")
+        if self.type != "multiple_choice" and self.options:
+            raise ValueError("Only multiple-choice questions accept choice options")
+        if self.type != "multiple_choice" and self.chart is not None:
+            raise ValueError("Only multiple-choice questions have a chart style")
         return self
 
 
@@ -70,12 +78,17 @@ class QuestionCreated(BaseModel):
 class QuestionUpdate(BaseModel):
     is_open: bool | None = None
     results_visible: bool | None = None
+    chart: ChartStyle | None = None
 
     @model_validator(mode="after")
     def require_question_flag(self) -> "QuestionUpdate":
         if any(getattr(self, field) is None for field in self.model_fields_set):
-            raise ValueError("Question flags must be booleans")
+            raise ValueError("Question changes must not be null")
         return self
+
+
+class QuestionOrder(BaseModel):
+    question_ids: list[int]
 
 
 class ActiveSet(BaseModel):
@@ -115,13 +128,14 @@ PublicResults = MultipleChoiceResults | WordCloudResults
 
 class ActiveQuestion(BaseModel):
     id: int
-    type: Literal["multiple_choice", "word_cloud"]
+    type: QuestionType
     text: str
     options: list[Option]
     is_open: bool
     results_visible: bool
     response_count: int
     results: PublicResults | None
+    chart: ChartStyle | None = None
 
 
 class SessionState(BaseModel):
@@ -131,7 +145,7 @@ class SessionState(BaseModel):
 
 class QuestionResults(BaseModel):
     question_id: int
-    type: Literal["multiple_choice", "word_cloud"]
+    type: QuestionType
     options: list[OptionCount] | None = None
     words: list[WordCount] | None = None
 
