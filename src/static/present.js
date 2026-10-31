@@ -7,7 +7,7 @@
 import { chartOf, codeFromPath, el, hostKeyFromHash, request, sessionPath, subscribe } from "./api.js";
 import { renderResults } from "./charts.js";
 import { loadQa, renderQaList } from "./qa.js";
-import { Countdown, secondsLeftOf } from "./timer.js";
+import { Countdown, limitLabel, secondsLeftOf } from "./timer.js";
 import { loadSlides, showSlide } from "./slides.js";
 import { imageOf, showImage, watchImage } from "./image.js";
 
@@ -77,7 +77,8 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 async function showQa(q) {
   const items = await loadQa(code, q.id).catch(() => []);
-  $("count").textContent = [items ? plural(items.length, "question") : null, q.is_open ? "Ask yours on your phone" : "Questions closed"].filter(Boolean).join(" · ");
+  $("count").textContent = items ? plural(items.length, "question") : "";
+  $("slide-state").textContent = [q.is_open ? "Questions open" : "Questions closed", q.time_limit ? `${limitLabel(q.time_limit)} limit` : null].filter(Boolean).join(" · ");
   $("results").replaceChildren(renderQaList(items, { limit: 8 }));
 }
 
@@ -97,6 +98,7 @@ async function refresh() {
   if (!q) {
     $("question").textContent = state.title || "Waiting for the host…";
     $("count").textContent = "";
+    $("slide-state").textContent = "";
     $("results").replaceChildren(el("p", { class: "muted" }, "Starting soon."));
     return;
   }
@@ -104,7 +106,8 @@ async function refresh() {
   if (q.type === "qa") return showQa(q);
   const result = await resultsFor(q).catch(() => null);
   const count = countOf(q, result);
-  $("count").textContent = [count === null ? null : plural(count, "response"), q.is_open ? "Voting open" : "Voting closed"].filter(Boolean).join(" · ");
+  $("count").textContent = count === null ? "" : plural(count, "response");
+  $("slide-state").textContent = [q.is_open ? "Voting open" : "Voting closed", q.time_limit ? `${limitLabel(q.time_limit)} limit` : null, q.results_visible ? "Results live" : "Results hidden"].filter(Boolean).join(" · ");
   if (!q.results_visible) {
     const when = secondsLeftOf(q) !== null ? "when the timer ends" : "when the host reveals them";
     $("results").replaceChildren(el("p", { class: "muted" }, `Results will appear ${when}.`));
