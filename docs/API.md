@@ -33,7 +33,7 @@ Notes:
 - `type` is `multiple_choice`, `word_cloud` or `qa`. `options` and `chart` are used for multiple choice only.
 - `chart` is `bar` (default) or `donut`: how a poll's results are drawn. It is `null` for other types. Patching `chart` on a non-poll returns 404.
 - Slides are ordered by `position`. New slides go to the end; `PUT .../questions/order` sets positions 1..N in the given order. `/results` lists slides in this order.
-- A `qa` slide has no options. `is_open` means "accepting new audience questions"; `results_visible` is ignored. In `/results` it appears as `{question_id, type}` only until audience questions land (#19).
+- A `qa` slide has no options. `is_open` means "accepting new audience questions"; `results_visible` is ignored. In `/results` it appears as `{question_id, type}` only; its audience questions come from the Q&A routes below.
 - Q&A routes return 404 if `{qid}` is not a `qa` slide in this session (or the item is not on that slide). Each Q&A slide has its own list. Upvoting works even when the slide is closed. Text is stored and returned as plain text; screens must not render it as HTML.
 - A `qa` slide's `response_count` is the number of audience questions on it.
 - The WebSocket also sends `{"type": "qa_changed"}` after a new Q&A question, an upvote or a removed upvote.

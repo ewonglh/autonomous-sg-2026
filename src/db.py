@@ -443,7 +443,7 @@ def get_session_results(code: str) -> list[dict]:
                 )
                 continue
             if question["type"] == "qa":
-                # Audience questions and upvotes arrive with #19.
+                # Audience questions and upvotes come from the Q&A routes (src/qa.py).
                 results.append({"question_id": question_id, "type": question["type"]})
                 continue
 
