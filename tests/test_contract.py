@@ -34,7 +34,7 @@ class ContractTests(ApiTestCase):
         question = data["active_question"]
         self.assertEqual(set(question), {
             "id", "type", "text", "options", "is_open", "results_visible",
-            "response_count", "results", "chart",
+            "response_count", "results", "chart", "time_limit", "seconds_left", "image_url",
         })
         self.assertEqual(set(question["options"][0]), {"id", "label"})
 

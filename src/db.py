@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS questions (
     type TEXT NOT NULL CHECK (type IN ('multiple_choice', 'word_cloud', 'qa')),
     text TEXT NOT NULL,
     chart TEXT CHECK (chart IN ('bar', 'donut')),
+    time_limit INTEGER,
+    closes_at TEXT,
     is_open INTEGER NOT NULL DEFAULT 1,
     results_visible INTEGER NOT NULL DEFAULT 0
 );
@@ -36,6 +38,13 @@ CREATE TABLE IF NOT EXISTS responses (
     option_id INTEGER REFERENCES options(id),
     text TEXT,
     created_at TEXT NOT NULL
+);
+-- One optional picture per slide, kept apart so state reads stay small.
+CREATE TABLE IF NOT EXISTS question_images (
+    question_id INTEGER PRIMARY KEY REFERENCES questions(id),
+    media_type TEXT NOT NULL,
+    data BLOB NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS qa_items (
     id INTEGER PRIMARY KEY,
@@ -151,6 +160,7 @@ def create_question(
     text: str,
     option_labels: list[str],
     chart: str | None = None,
+    time_limit: int | None = None,
 ) -> int | None:
     if question_type == "multiple_choice":
         chart = chart or "bar"
@@ -170,9 +180,9 @@ def create_question(
             (session_id,),
         ).fetchone()[0]
         cursor = conn.execute(
-            """INSERT INTO questions (session_id, position, type, text, chart)
-               VALUES (?, ?, ?, ?, ?)""",
-            (session_id, position, question_type, text, chart),
+            """INSERT INTO questions (session_id, position, type, text, chart, time_limit)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (session_id, position, question_type, text, chart, time_limit),
         )
         question_id = cursor.lastrowid
         conn.executemany(
@@ -252,13 +262,14 @@ def save_multiple_choice_response(
 def update_question_state(
     code: str, question_id: int, changes: dict[str, bool | str]
 ) -> bool:
-    allowed_fields = {"is_open", "results_visible", "chart"}
+    allowed_fields = {"is_open", "results_visible", "chart", "time_limit"}
     if not changes or not set(changes).issubset(allowed_fields):
         raise ValueError("Question state changes must contain valid flags")
 
     assignments = ", ".join(f"{field} = ?" for field in changes)
     values = [
-        value if field == "chart" else int(value) for field, value in changes.items()
+        value if field in ("chart", "time_limit") else int(value)
+        for field, value in changes.items()
     ]
     # Only polls have a chart style.
     poll_only = " AND type = 'multiple_choice'" if "chart" in changes else ""
@@ -341,6 +352,7 @@ def delete_question(code: str, question_id: int) -> bool:
             (question_id,),
         )
         conn.execute("DELETE FROM qa_items WHERE question_id = ?", (question_id,))
+        conn.execute("DELETE FROM question_images WHERE question_id = ?", (question_id,))
         conn.execute("DELETE FROM responses WHERE question_id = ?", (question_id,))
         conn.execute("DELETE FROM options WHERE question_id = ?", (question_id,))
         conn.execute("DELETE FROM questions WHERE id = ?", (question_id,))
@@ -410,6 +422,7 @@ def get_session_questions(code: str) -> dict | None:
         rows = conn.execute(
             """SELECT questions.id, questions.position, questions.type, questions.text,
                       questions.is_open, questions.results_visible, questions.chart,
+                      questions.time_limit, questions.closes_at,
                       (SELECT COUNT(*) FROM responses
                        WHERE responses.question_id = questions.id)
                       + (SELECT COUNT(*) FROM qa_items
@@ -431,6 +444,8 @@ def get_session_questions(code: str) -> dict | None:
                 "results_visible": bool(row["results_visible"]),
                 "response_count": row["response_count"],
                 "chart": row["chart"],
+                "time_limit": row["time_limit"],
+                "closes_at": row["closes_at"],
             }
             for row in rows
         ]
@@ -452,7 +467,7 @@ def get_session_state(code: str) -> dict | None:
                        WHERE responses.question_id = questions.id)
                       + (SELECT COUNT(*) FROM qa_items
                          WHERE qa_items.question_id = questions.id) AS response_count,
-                      questions.chart
+                      questions.chart, questions.time_limit, questions.closes_at
                FROM sessions
                LEFT JOIN questions
                  ON questions.id = sessions.active_question_id
@@ -476,6 +491,8 @@ def get_session_state(code: str) -> dict | None:
                 "response_count": session["response_count"],
                 "results": None,
                 "chart": session["chart"],
+                "time_limit": session["time_limit"],
+                "closes_at": session["closes_at"],
             }
         return {"title": session["title"], "active_question": active_question}
     finally:

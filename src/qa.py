@@ -5,6 +5,7 @@ from . import db, qa_store, schemas
 from .codes import RoomCode
 from .routes import (
     RESPONSE_SUBMISSION_LIMIT,
+    close_finished_timers,
     enforce_rate_limit,
     parse_participant_id,
     publish_event,
@@ -13,7 +14,7 @@ from .routes import (
 
 router = APIRouter(
     prefix="/api/sessions/{code}/questions/{qid}/qa",
-    dependencies=[Depends(reject_expired_session)],
+    dependencies=[Depends(reject_expired_session), Depends(close_finished_timers)],
 )
 NOT_FOUND = "Q&A slide not found"
 
