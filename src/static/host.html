@@ -20,16 +20,7 @@
       <p id="no-key" class="card error" hidden>This host link is missing its key. Open the private host link you got when you created the session.</p>
 
       <div id="console" hidden>
-        <div class="row" style="justify-content: space-between; align-items: flex-start">
-          <h1 id="title">Session</h1>
-          <div class="row image-picker">
-            <img id="image-preview" class="image-thumb" alt="Image shown on the presenter screen" hidden>
-            <label for="image-file" class="button" id="image-add">Add image</label>
-            <input type="file" id="image-file" accept="image/*" hidden>
-            <button id="image-remove" type="button" hidden>Remove image</button>
-          </div>
-        </div>
-        <p id="image-status" class="muted" aria-live="polite" hidden></p>
+        <h1 id="title">Session</h1>
         <p class="muted">Keep this page's link private: it is your host key. Bookmark it to come back.</p>
 
         <section class="card stack">
@@ -61,6 +52,7 @@
 
         <section class="card">
           <h2>Slides</h2>
+          <p id="image-status" class="muted" aria-live="polite" hidden></p>
           <ol id="questions" class="qlist"></ol>
         </section>
 
@@ -77,6 +69,8 @@
             <input id="q-text" maxlength="300" required placeholder="Which talk should we extend?">
             <label for="q-time" class="muted">Time limit (voting closes and results show when it ends)</label>
             <select id="q-time"></select>
+            <label for="q-image" class="muted">Picture (optional, shown to the right of the question)</label>
+            <input type="file" id="q-image" accept="image/*">
             <div id="poll-fields" class="stack">
               <label for="q-options" class="muted">Options, one per line</label>
               <textarea id="q-options" rows="4" placeholder="Design systems&#10;Shipping faster"></textarea>

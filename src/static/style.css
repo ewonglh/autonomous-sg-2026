@@ -134,9 +134,12 @@ select { width: auto; }
 .qa button.votes[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); outline: none; }
 .qa .text { flex: 1; overflow-wrap: anywhere; }
 
-/* Optional image: picker on the host page, top-right corner of the presenter */
+/* Optional picture per slide: thumbnail on the host page, right of the question on the presenter */
 .image-thumb { height: 40px; max-width: 120px; object-fit: contain; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); }
-.corner-image { max-height: clamp(48px, 9vw, 120px); max-width: min(30vw, 320px); object-fit: contain; margin-left: auto; }
+.question-row { display: flex; gap: 24px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.question-row h1 { flex: 1 1 320px; min-width: 0; }
+.slide-image { flex: 0 1 auto; max-height: clamp(120px, 26vw, 320px); max-width: min(40%, 480px); object-fit: contain; border-radius: var(--radius); }
+@media (max-width: 700px) { .slide-image { max-width: 100%; } }
 
 /* Countdown */
 .timer { display: inline-block; font-weight: 700; font-variant-numeric: tabular-nums; padding: 4px 12px; border-radius: 99px; background: var(--surface); border: 1px solid var(--border); margin: 0; }

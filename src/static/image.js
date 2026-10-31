@@ -1,9 +1,11 @@
-// Optional image (for example a logo) the host adds; it shows in the presenter's top-right corner.
-// It is shrunk in the browser and kept in this browser's storage, so it reaches the presenter tab
-// opened from the host screen on the same computer. Sharing it across devices needs issue #30.
+// Optional picture for each slide. It shows to the right of the question on the presenter screen
+// and changes with the slide. The host shrinks it in the browser and sends it to the server
+// (issue #30). Until the server supports that, a copy is kept in this browser's storage, which
+// reaches a presenter tab opened from the host screen on the same computer.
+import { ApiError, request, sessionPath } from "./api.js";
 
-const MAX_SIDE = 600;
-const keyFor = (code) => `crowdpulse-image-${code}`;
+const MAX_SIDE = 800;
+const keyFor = (code, qid) => `crowdpulse-image-${code}-${qid}`;
 
 // Reads an image file and returns a shrunk PNG data URL (keeps transparency for logos).
 export function shrinkImage(file) {
@@ -28,29 +30,44 @@ export function shrinkImage(file) {
   });
 }
 
-export function loadImage(code) {
+export function loadImage(code, qid) {
   try {
-    return localStorage.getItem(keyFor(code));
+    return localStorage.getItem(keyFor(code, qid));
   } catch {
     return null;
   }
 }
 
 // Returns false if the browser would not store it (storage blocked or full).
-export function saveImage(code, dataUrl) {
+export function saveImage(code, qid, dataUrl) {
   try {
-    if (dataUrl) localStorage.setItem(keyFor(code), dataUrl);
-    else localStorage.removeItem(keyFor(code));
+    if (dataUrl) localStorage.setItem(keyFor(code, qid), dataUrl);
+    else localStorage.removeItem(keyFor(code, qid));
     return true;
   } catch {
     return false;
   }
 }
 
-// Calls onChange(dataUrl | null) when another tab adds or removes the image.
+// The slide's picture: the server's copy if it has one, otherwise this browser's copy.
+export const imageOf = (code, question) => (question ? question.image_url || loadImage(code, question.id) : null);
+
+// Sends the picture (or removes it) on the server. Servers without image support are fine:
+// the local copy still works.
+export async function uploadImage(code, qid, hostKey, dataUrl) {
+  const path = `${sessionPath(code)}/questions/${qid}/image`;
+  try {
+    if (dataUrl) await request("PUT", path, { body: { data_url: dataUrl }, hostKey });
+    else await request("DELETE", path, { hostKey });
+  } catch (err) {
+    if (!(err instanceof ApiError) || ![404, 405].includes(err.status)) throw err;
+  }
+}
+
+// Calls onChange() when another tab adds or removes a slide's picture.
 export function watchImage(code, onChange) {
   window.addEventListener("storage", (event) => {
-    if (event.key === keyFor(code)) onChange(event.newValue);
+    if (event.key && event.key.startsWith(`crowdpulse-image-${code}-`)) onChange();
   });
 }
 

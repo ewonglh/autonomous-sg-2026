@@ -4,7 +4,7 @@ import { ApiError, chartOf, codeFromPath, el, hostKeyFromHash, request, sessionP
 import { renderResults } from "./charts.js";
 import { loadQa, renderQaList } from "./qa.js";
 import { Countdown, limitLabel, secondsLeftOf, TIME_LIMITS } from "./timer.js";
-import { loadImage, saveImage, showImage, shrinkImage } from "./image.js";
+import { imageOf, saveImage, shrinkImage, uploadImage } from "./image.js";
 
 const $ = (id) => document.getElementById(id);
 const code = codeFromPath();
@@ -91,7 +91,6 @@ function start() {
   $("q-type").addEventListener("change", typeChanged);
   $("q-time").replaceChildren(...timeOptions(0));
   countdown = new Countdown($("timer"), () => refresh());
-  setupImage();
   typeChanged();
   request("GET", `${sessionPath(code)}/state`).then((s) => {
     $("title").textContent = s.title || "Session";
@@ -100,37 +99,28 @@ function start() {
   subscribe(code, refresh);
 }
 
-// Optional image for the presenter's top-right corner.
-function setupImage() {
-  const render = (dataUrl) => {
-    showImage($("image-preview"), dataUrl);
-    $("image-remove").hidden = !dataUrl;
-    $("image-add").textContent = dataUrl ? "Change image" : "Add image";
-  };
-  const note = (text, isError) => {
-    $("image-status").hidden = !text;
-    $("image-status").className = isError ? "error" : "muted";
-    $("image-status").textContent = text;
-  };
-  render(loadImage(code));
-  $("image-file").addEventListener("change", async (event) => {
-    const file = event.target.files[0];
-    event.target.value = "";
-    if (!file) return;
-    try {
-      const dataUrl = await shrinkImage(file);
-      if (!saveImage(code, dataUrl)) return note("This browser would not save the image. Try a smaller one.", true);
-      render(dataUrl);
-      note("Image added. It shows in the top-right corner of the presenter screen opened from here.");
-    } catch (err) {
-      note(err.message, true);
-    }
-  });
-  $("image-remove").onclick = () => {
-    saveImage(code, null);
-    render(null);
-    note("Image removed.");
-  };
+// Each slide can have a picture that shows to the right of its question on the presenter screen.
+function imageNote(text, isError = false) {
+  $("image-status").hidden = !text;
+  $("image-status").className = isError ? "error" : "muted";
+  $("image-status").textContent = text;
+}
+
+// file = a File to set, or null to remove the picture. Returns true when it worked.
+async function setSlideImage(id, file) {
+  try {
+    const dataUrl = file ? await shrinkImage(file) : null;
+    if (!saveImage(code, id, dataUrl)) throw new Error("This browser would not save the image. Try a smaller one.");
+    await uploadImage(code, id, hostKey, dataUrl);
+    imageNote(file ? "Picture saved for that slide." : "Picture removed.");
+    return true;
+  } catch (err) {
+    imageNote(err.message, true);
+    return false;
+  } finally {
+    lastListKey = "";
+    refresh();
+  }
 }
 
 function say(text, isError = false) {
@@ -161,11 +151,14 @@ async function addSlide(event) {
     const { id } = await request("POST", `${sessionPath(code)}/questions`, { body, hostKey });
     const local = localSlides();
     saveLocal([...local, { ...body, id, options: options.map((label, i) => ({ id: i + 1, label })), is_open: false, results_visible: false, position: local.length + 1 }]);
+    const picture = $("q-image").files[0];
     $("q-text").value = "";
     $("q-options").value = "";
+    $("q-image").value = "";
     status.className = "success";
     status.textContent = `Slide ${slides.length + 1} added.`;
-    refresh();
+    if (picture) await setSlideImage(id, picture);
+    else refresh();
   } catch (err) {
     status.className = "error";
     status.textContent =
@@ -229,6 +222,8 @@ function slideItem(q, index) {
           el("option", { value: "donut", selected: chartOf(q) === "donut" }, "Donut chart"),
         )
       : null;
+  const picture = imageOf(code, q);
+  const pictureInput = el("input", { type: "file", accept: "image/*", hidden: true, onchange: (event) => { const file = event.target.files[0]; event.target.value = ""; if (file) setSlideImage(q.id, file); } });
   const count = typeof q.response_count === "number" ? el("span", { class: "muted" }, q.type === "qa" ? `${q.response_count} questions` : `${q.response_count} responses`) : null;
   return el(
     "li",
@@ -238,6 +233,7 @@ function slideItem(q, index) {
       { class: "row" },
       el("span", { class: "slide-num" }, String(index + 1)),
       el("strong", { class: "slide-text" }, q.text),
+      picture ? el("img", { class: "image-thumb", src: picture, alt: "Picture for this slide" }) : null,
       el("span", { class: "badge" }, TYPE_LABEL[q.type] || q.type),
       isActive ? el("span", { class: "badge on" }, "On screen") : null,
     ),
@@ -251,6 +247,8 @@ function slideItem(q, index) {
       toggle("is_open", q.type === "qa" ? "Open questions" : "Open voting", q.type === "qa" ? "Close questions" : "Close voting"),
       q.type === "qa" ? null : toggle("results_visible", "Reveal results", "Hide results"),
       chartPicker,
+      el("label", { class: "button" }, picture ? "Change picture" : "Add picture", pictureInput),
+      picture ? el("button", { onclick: () => setSlideImage(q.id, null) }, "Remove picture") : null,
       el("select", { "aria-label": "Time limit", onchange: (event) => patch({ time_limit: Number(event.target.value) || null }) }, timeOptions(q.time_limit)),
       count,
     ),
