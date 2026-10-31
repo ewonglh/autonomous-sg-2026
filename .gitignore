@@ -16,3 +16,6 @@ __pycache__/
 .ruff_cache/
 *.py[cod]
 .DS_Store
+
+# Local SQLite database
+*.db
