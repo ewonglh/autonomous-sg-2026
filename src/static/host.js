@@ -7,6 +7,7 @@ import { imageOf, saveImage, shrinkImage, uploadImage } from "./image.js";
 import { byPosition, loadSlides, localSlides, notFound, patchLocal, saveLocal, showSlide } from "./slides.js";
 import { renderLiveDashboard, renderResultsDashboard, setupHostDashboard } from "./host-dashboard.js";
 import { watchPublicLink } from "./public-link.js";
+import { setupDeckControls } from "./decks.js";
 
 const $ = (id) => document.getElementById(id);
 const code = codeFromPath();
@@ -56,6 +57,7 @@ function start() {
   };
   $("start").onclick = startPresentation;
   $("export").onclick = exportCsv;
+  setupDeckControls({ code, hostKey, getSlides: () => slides, onLoaded: refresh });
   enableDragReorder($("questions"));
   $("add").addEventListener("submit", addSlide);
   $("q-type").addEventListener("change", typeChanged);
@@ -170,6 +172,17 @@ async function patchSlide(id, changes) {
   try {
     await request("PATCH", `${sessionPath(code)}/questions/${id}`, { body: changes, hostKey });
     patchLocal(code, id, changes);
+  } catch (err) {
+    say(err.message, true);
+  }
+  refresh();
+}
+
+async function deleteSlide(q) {
+  if (!confirm(`Delete "${q.text}"? Its responses are deleted too.`)) return;
+  try {
+    await request("DELETE", `${sessionPath(code)}/questions/${q.id}`, { hostKey });
+    saveLocal(code, localSlides(code).filter((s) => s.id !== q.id));
   } catch (err) {
     say(err.message, true);
   }
@@ -323,6 +336,7 @@ function slideItem(q, index) {
       el("select", { "aria-label": "Time limit", onchange: (event) => patchSlide(q.id, { time_limit: Number(event.target.value) || null }) }, timeOptions(q.time_limit)),
       el("label", { class: "button" }, picture ? "Change picture" : "Add picture", pictureInput),
       picture ? el("button", { onclick: () => setSlideImage(q.id, null) }, "Remove picture") : null,
+      el("button", { class: "small danger", title: "Delete this slide", onclick: () => deleteSlide(q) }, "Delete"),
     ),
   );
 }
