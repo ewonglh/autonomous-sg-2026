@@ -37,6 +37,18 @@ CREATE TABLE IF NOT EXISTS responses (
     text TEXT,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS qa_items (
+    id INTEGER PRIMARY KEY,
+    question_id INTEGER NOT NULL REFERENCES questions(id),
+    participant_id TEXT NOT NULL,
+    text TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS qa_upvotes (
+    qa_item_id INTEGER NOT NULL REFERENCES qa_items(id),
+    participant_id TEXT NOT NULL,
+    UNIQUE (qa_item_id, participant_id)
+);
 -- One vote per participant for multiple choice only (word cloud rows have no option_id).
 CREATE UNIQUE INDEX IF NOT EXISTS one_vote_per_participant
     ON responses (question_id, participant_id) WHERE option_id IS NOT NULL;
@@ -279,7 +291,9 @@ def get_session_questions(code: str) -> dict | None:
             """SELECT questions.id, questions.position, questions.type, questions.text,
                       questions.is_open, questions.results_visible, questions.chart,
                       (SELECT COUNT(*) FROM responses
-                       WHERE responses.question_id = questions.id) AS response_count
+                       WHERE responses.question_id = questions.id)
+                      + (SELECT COUNT(*) FROM qa_items
+                         WHERE qa_items.question_id = questions.id) AS response_count
                FROM questions WHERE questions.session_id = ?
                ORDER BY questions.position""",
             (session["id"],),
@@ -315,7 +329,9 @@ def get_session_state(code: str) -> dict | None:
             """SELECT sessions.title, questions.id AS question_id, questions.type,
                       questions.text, questions.is_open, questions.results_visible,
                       (SELECT COUNT(*) FROM responses
-                       WHERE responses.question_id = questions.id) AS response_count,
+                       WHERE responses.question_id = questions.id)
+                      + (SELECT COUNT(*) FROM qa_items
+                         WHERE qa_items.question_id = questions.id) AS response_count,
                       questions.chart
                FROM sessions
                LEFT JOIN questions
@@ -427,7 +443,7 @@ def get_session_results(code: str) -> list[dict]:
                 )
                 continue
             if question["type"] == "qa":
-                # Audience questions and upvotes arrive with #19.
+                # Audience questions and upvotes come from the Q&A routes (src/qa.py).
                 results.append({"question_id": question_id, "type": question["type"]})
                 continue
 

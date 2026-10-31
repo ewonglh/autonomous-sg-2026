@@ -152,3 +152,26 @@ class QuestionResults(BaseModel):
 
 class Results(BaseModel):
     results: list[QuestionResults]
+
+
+class QaItem(BaseModel):
+    id: int
+    text: str
+    upvotes: int
+    upvoted_by_me: bool
+
+
+class QaList(BaseModel):
+    items: list[QaItem]
+
+
+class QaCreate(BaseModel):
+    text: str = Field(max_length=280)
+
+    @field_validator("text")
+    @classmethod
+    def require_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Question text must not be blank")
+        return value
