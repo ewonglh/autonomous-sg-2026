@@ -8,6 +8,16 @@ import unittest
 os.environ["DB_PATH"] = os.path.join(tempfile.mkdtemp(), "test.db")
 
 from src.main import app  # noqa: E402
+from src.db import connect, init_db  # noqa: E402
+
+init_db()
+_conn = connect()
+_conn.execute(
+    "INSERT OR IGNORE INTO sessions (code, host_key_hash, title, created_at, last_active_at) "
+    "VALUES ('ABC123', 'unused', 'Test session', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')"
+)
+_conn.commit()
+_conn.close()
 
 HOST = {"authorization": "Bearer dummy-host-key"}
 
@@ -90,7 +100,7 @@ class ContractTests(unittest.TestCase):
         _, body, headers = request("GET", "/api/sessions/ABC123/export.csv", HOST)
         self.assertTrue(headers["content-type"].startswith("text/csv"))
         self.assertEqual(
-            body.decode().strip().split(","),
+            body.decode("utf-8-sig").strip().split(","),
             ["session_code", "question_order", "question_type", "question_text",
              "answer", "participant_id", "submitted_at_utc", "qa_upvotes"],
         )

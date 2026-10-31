@@ -1,7 +1,8 @@
 """Route stubs. They return contract-shaped dummy data; real logic comes in the next issue."""
 from fastapi import APIRouter, Depends, Header, HTTPException, WebSocket
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import Response
 
+from . import csv_export, db
 from . import schemas
 
 router = APIRouter()
@@ -84,16 +85,38 @@ def get_results(code: str, _key: str = Depends(require_host_key)) -> schemas.Res
     )
 
 
-CSV_HEADER = (
-    "session_code,question_order,question_type,question_text,"
-    "answer,participant_id,submitted_at_utc,qa_upvotes\r\n"
-)
+@router.get("/api/sessions/{code}/export.csv", response_class=Response)
+def export_csv(code: str, _key: str = Depends(require_host_key)) -> Response:
+    conn = db.connect()
+    try:
+        session = conn.execute("SELECT id FROM sessions WHERE code = ?", (code,)).fetchone()
+        if session is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        responses = conn.execute(
+            """SELECT s.code, q.position, q.type, q.text,
+                      COALESCE(o.label, r.text, '') AS answer,
+                      r.participant_id, r.created_at
+               FROM responses r
+               JOIN questions q ON q.id = r.question_id
+               JOIN sessions s ON s.id = q.session_id
+               LEFT JOIN options o ON o.id = r.option_id
+               WHERE s.id = ?
+               ORDER BY q.position, r.created_at, r.id""",
+            (session["id"],),
+        ).fetchall()
+    finally:
+        conn.close()
 
-
-@router.get("/api/sessions/{code}/export.csv", response_class=PlainTextResponse)
-def export_csv(code: str, _key: str = Depends(require_host_key)) -> PlainTextResponse:
-    # Stub: header row only. The CSV issue writes the real export.
-    return PlainTextResponse(CSV_HEADER, media_type="text/csv")
+    rows = (
+        (row["code"], row["position"], row["type"], row["text"], row["answer"],
+         row["participant_id"], row["created_at"], "")
+        for row in responses
+    )
+    return Response(
+        content=csv_export.render_csv(rows),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{code}.csv"'},
+    )
 
 
 @router.websocket("/ws/{code}")
