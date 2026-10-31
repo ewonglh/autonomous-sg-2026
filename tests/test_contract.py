@@ -50,10 +50,19 @@ class ContractTests(ApiTestCase):
     def test_results_shape(self):
         session = self.create_session()
         host = {"authorization": f"Bearer {session['host_key']}"}
-        _, body, _ = self.request("GET", f"/api/sessions/{session['code']}/results", host)
+        path = f"/api/sessions/{session['code']}"
+        for question in [
+            {"type": "multiple_choice", "text": "Pick one?", "options": ["Yes", "No"]},
+            {"type": "word_cloud", "text": "Your thoughts?"},
+        ]:
+            status, _, _ = self.request("POST", f"{path}/questions", host, question)
+            self.assertEqual(status, 200)
+
+        _, body, _ = self.request("GET", f"{path}/results", host)
         results = json.loads(body)["results"]
+        self.assertEqual(len(results), 2)
         self.assertEqual(set(results[0]["options"][0]), {"option_id", "label", "count"})
-        self.assertEqual(set(results[1]["words"][0]), {"word", "count"})
+        self.assertEqual(results[1]["words"], [])
 
     def test_response_needs_participant_header(self):
         session = self.create_session()
