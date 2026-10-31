@@ -1,0 +1,177 @@
+#!/bin/sh
+# Fail a PR that changes files outside the "Owner / files" list of its issue.
+# Full mode checks issue branches and the kickoff/revert exceptions.
+#
+#   sh scripts/check-scope
+#   BRANCH=issue-5-demo BASE=main sh scripts/check-scope   # CI and tests set these
+#
+# Patterns: a folder (with or without a trailing slash) allows everything under it, "*" is a shell glob,
+# anything else is an exact path.
+# Extra always-allowed patterns live in .scope-allow.
+set -e
+
+# Read process mode from the base branch. The working tree is used only before
+# the base has a project file, as on the kickoff PR.
+base="origin/${BASE:-main}"
+if project=$(git show "$base:docs/PROJECT.md" 2>/dev/null); then
+  :
+else
+  project=$(cat docs/PROJECT.md 2>/dev/null || true)
+fi
+
+if printf '%s\n' "$project" | sed 's/\r$//' | grep -Eqi '^gates:[[:space:]]*strict([[:space:]]*#.*)?[[:space:]]*$'; then
+  gates=strict
+else
+  gates=warn
+fi
+
+# Light process: no scope gate. Missing or unreadable mode means full.
+if printf '%s\n' "$project" | sed 's/\r$//' | grep -Eqi '^process:[[:space:]]*light([[:space:]]*#.*)?[[:space:]]*$'; then
+  echo "check-scope: process is light, skipping"
+  exit 0
+fi
+
+if [ "${BRANCH+x}" = x ]; then
+  branch=$BRANCH
+else
+  branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+  [ "$branch" = HEAD ] && branch=""
+fi
+if [ -z "$branch" ]; then
+  echo "check-scope: no branch name, skipping"
+  exit 0
+fi
+
+if [ "$gates" = strict ] && [ "$branch" = kickoff ]; then
+  if ! git rev-parse --verify "$base^{commit}" >/dev/null 2>&1; then
+    base_project="BASE_MISSING"
+  elif git cat-file -e "$base:docs/PROJECT.md" 2>/dev/null; then
+    base_project=$(git show "$base:docs/PROJECT.md" 2>/dev/null || true)
+  else
+    base_project="BASE_DOC_MISSING"
+  fi
+  if [ "$base_project" = BASE_MISSING ] || { [ "$base_project" != BASE_DOC_MISSING ] && ! printf '%s\n' "$base_project" | grep -q 'UNCONFIGURED'; }; then
+    echo "check-scope: kickoff branch is allowed only while $base:docs/PROJECT.md is missing or still UNCONFIGURED."
+    exit 1
+  fi
+  echo "check-scope: allowed kickoff branch while the base project is unconfigured, skipping"
+  exit 0
+fi
+
+case "$branch" in
+  revert-*) if [ "$gates" = strict ]; then
+    subjects=$(git log --format=%s "$base..HEAD" 2>/dev/null || true)
+    if [ -z "$subjects" ] || ! printf '%s\n' "$subjects" | awk 'NF && $0 !~ /^Revert/ { bad=1 } END { exit bad }'; then
+      echo "check-scope: $branch is allowed only when every commit in $base..HEAD has a subject starting with Revert."
+      exit 1
+    fi
+    echo "check-scope: allowed revert branch, skipping"
+    exit 0
+    fi ;;
+esac
+
+violation() {
+  [ "$gates" = warn ] && echo "::warning::$1"
+  echo "check-scope: $1"
+  [ "$gates" = strict ] && return 1
+  return 0
+}
+
+gate_error() {
+  if [ "$gates" = warn ]; then
+    echo "::warning::$1"
+    echo "check-scope: $1"
+    exit 0
+  fi
+  echo "check-scope: $1"
+  exit 1
+}
+
+N=$(printf '%s\n' "$branch" | sed -n 's/^issue-\([0-9][0-9]*\)-[^[:space:]].*/\1/p')
+if [ -z "$N" ]; then
+  if [ "$gates" = warn ]; then violation "full mode requires branch issue-<N>-<slug>; rename this branch."; else violation "full mode requires branch issue-<N>-<slug>; rename this branch or use kickoff/revert-* for those changes."; fi
+  [ "$gates" = strict ] && exit 1 || exit 0
+fi
+
+if ! body=$(gh issue view "$N" --json body -q .body); then
+  gate_error "could not read issue #$N with gh. Check GH_TOKEN and that the issue exists."
+fi
+
+# Tokens under "## Owner / files". HTML comments are removed; backticks, commas and "- " are stripped.
+# A token counts if it contains a "/" or a ".".
+tokens=$(printf '%s\n' "$body" | awk '
+  BEGIN { inc = 0; sec = 0 }
+  {
+    line = $0; text = ""
+    while (1) {
+      if (inc) {
+        i = index(line, "-->")
+        if (i == 0) { line = ""; break }
+        line = substr(line, i + 3); inc = 0
+      }
+      i = index(line, "<!--")
+      if (i == 0) { text = text line; break }
+      text = text substr(line, 1, i - 1)
+      line = substr(line, i + 4); inc = 1
+    }
+    if (text ~ /^## /) {
+      h = text; sub(/[ \t\r]+$/, "", h)
+      sec = (h == "## Owner / files")
+      next
+    }
+    if (!sec) next
+    gsub(/[`,]/, "", text)
+    sub(/^[ \t]*- /, "", text)
+    n = split(text, w, /[ \t\r]+/)
+    for (k = 1; k <= n; k++) if (w[k] ~ /[\/.]/) print w[k]
+  }')
+
+if [ -z "$tokens" ]; then
+  violation "the issue's 'Owner / files' section lists no files. Fill it in."
+  [ "$gates" = strict ] && exit 1 || exit 0
+fi
+
+extra=""
+if [ -f .scope-allow ]; then
+  extra=$(grep -v '^[[:space:]]*\(#\|$\)' .scope-allow || true)
+fi
+allowed=$(printf '%s\n%s\n' "$tokens" "$extra")
+
+# Exit 0 if path $1 matches any pattern in the newline-separated list $2.
+matches() {
+  printf '%s\n' "$2" | while IFS= read -r p; do
+    case "$p" in
+      "") ;;
+      */) case "$1" in "$p"*) echo hit ;; esac ;;
+      *\**) case "$1" in $p) echo hit ;; esac ;;
+      *) [ "$1" = "$p" ] && echo hit; case "$1" in "$p"/*) echo hit ;; esac ;;
+    esac
+  done | grep -q hit
+}
+
+# --no-renames lists both the old and the new path, so a rename cannot hide a deleted file.
+if ! changed=$(git diff --name-only --no-renames "$base...HEAD"); then
+  gate_error "cannot diff against $base. In CI, checkout needs fetch-depth: 0."
+fi
+
+bad=$(printf '%s\n' "$changed" | while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  matches "$f" "$allowed" || echo "$f"
+done)
+n=$(printf '%s\n' "$changed" | grep -c . || true)
+
+if [ -n "$bad" ]; then
+  printf '%s\n' "$bad" | while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    violation "outside the issue scope: $f"
+    if [ "$gates" = strict ]; then exit 1; fi
+    :
+  done
+  if [ "$gates" = strict ]; then
+    echo "check-scope: fix: list the file in the issue's 'Owner / files' section, or move the change to an allowed file."
+    exit 1
+  fi
+  echo "check-scope: fix: list the file in the issue's 'Owner / files' section, or move the change to an allowed file."
+  exit 0
+fi
+echo "check-scope: ok ($n files)"

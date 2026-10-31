@@ -1,0 +1,58 @@
+#!/bin/sh
+# Fail on mess: stray top-level names, and text files over the line limit.
+# Rules are in .structure. Tracked and new unignored files count, so a local run sees what CI will see.
+#
+#   sh scripts/check-structure
+set -e
+
+base="origin/${BASE:-main}"
+if project=$(git show "$base:docs/PROJECT.md" 2>/dev/null); then :; else project=$(cat docs/PROJECT.md 2>/dev/null || true); fi
+if printf '%s\n' "$project" | sed 's/\r$//' | grep -Eiq '^gates:[[:space:]]*(warn|strict)([[:space:]]*#.*)?[[:space:]]*$'; then
+  gates=$(printf '%s\n' "$project" | sed 's/\r$//' | sed -nE 's/^gates:[[:space:]]*(warn|strict)([[:space:]]*#.*)?[[:space:]]*$/\1/ip' | head -n 1 | tr '[:upper:]' '[:lower:]')
+else gates=warn; fi
+
+[ -f .structure ] || { echo "check-structure: .structure is missing"; exit 1; }
+rules=$(grep -v '^[[:space:]]*\(#\|$\)' .structure || true)
+
+allowed=$(printf '%s\n' "$rules" | awk '$1 == "allow" { print $2 }')
+max=$(printf '%s\n' "$rules" | awk '$1 == "max-lines" { print $2 }' | tail -n 1)
+max=${max:-400}
+case "$max" in *[!0-9]*|"") echo "check-structure: max-lines must be a number in .structure"; exit 1;; esac
+ignores=$(printf '%s\n' "$rules" | awk '$1 == "ignore" { print $2 }')
+
+files=$(git ls-files --cached --others --exclude-standard)
+
+# Exit 0 if path $1 matches any glob in the newline-separated list $2.
+ignored() {
+  printf '%s\n' "$2" | while IFS= read -r g; do
+    [ -n "$g" ] || continue
+    case "$1" in $g) echo hit ;; esac
+  done | grep -q hit
+}
+
+# Check 1: every top-level name must be allowed.
+stray=$(printf '%s\n' "$files" | cut -d/ -f1 | sort -u | while IFS= read -r t; do
+  [ -n "$t" ] || continue
+  printf '%s\n' "$allowed" | grep -qxF "$t" || echo "check-structure: stray: $t. Fix: move it into an allowed folder, or ask the team to add 'allow $t' to .structure"
+done)
+
+# Check 2: text files over the line limit (binary and ignored files skipped).
+long=$(printf '%s\n' "$files" | while IFS= read -r f; do
+  [ -n "$f" ] && [ -f "$f" ] || continue
+  ignored "$f" "$ignores" && continue
+  grep -Iq . "$f" || continue
+  n=$(wc -l < "$f" | tr -d ' ')
+  [ "$n" -le "$max" ] || echo "check-structure: $f has $n lines (limit $max). Fix: split it into smaller files, or ask the team to raise max-lines in .structure"
+done)
+
+if [ -n "$stray" ] || [ -n "$long" ]; then
+  if [ "$gates" = warn ]; then
+    [ -z "$stray" ] || printf '%s\n' "$stray" | sed 's/^/::warning::/'
+    [ -z "$long" ] || printf '%s\n' "$long" | sed 's/^/::warning::/'
+    exit 0
+  fi
+  [ -z "$stray" ] || printf '%s\n' "$stray"
+  [ -z "$long" ] || printf '%s\n' "$long"
+  exit 1
+fi
+echo "check-structure: ok"

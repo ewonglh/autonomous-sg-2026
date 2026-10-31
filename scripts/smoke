@@ -1,0 +1,11 @@
+#!/bin/sh
+# Smoke test: 5 to 10 checks covering the demo path in docs/PROJECT.md.
+# CI has no .env.keys, so this must work with test values or mocks.
+# Locally, wrap commands with `dotenvx run --` if they need real secrets.
+# KICKOFF: replace the block below. It fails on purpose until you do,
+# so the team has to decide what "the demo still works" means.
+set -e
+
+# TODO(kickoff): e.g. npm test | pytest -m smoke | curl -f http://localhost:$PORT/health
+echo "smoke: not configured yet (edit scripts/smoke)"
+exit 1

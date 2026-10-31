@@ -1,0 +1,208 @@
+#!/bin/sh
+# Create, list or remove a git worktree for one issue. Plain git: works with any agent, model or editor.
+# Worktrees live inside the repo in .worktrees/ (gitignored).
+# They are always created from the LATEST REMOTE default branch (origin/<default>), never from the local one.
+# The script also fast-forwards the local default branch, and warns (never overwrites) if it cannot.
+#
+#   sh scripts/worktree new <issue-number> <slug>
+#   sh scripts/worktree new <issue-number> <slug> --no-claim
+#   sh scripts/worktree list
+#   sh scripts/worktree remove <issue-number> <slug>
+#
+# On "new" it also:
+#   - copies the files listed in .worktreeinclude (one path per line), e.g. .env.keys
+#   - symlinks the folders listed in .worktreelinks (one path per line), e.g. node_modules
+set -e
+
+# On Windows Git Bash, make "ln -s" fail instead of silently copying a whole folder.
+# Real symlinks there need Developer Mode switched on.
+export MSYS=winsymlinks:nativestrict
+
+# Always work from the main checkout, even if called from inside a worktree.
+CALLER=$(pwd)
+MAIN=$(cd "$(git rev-parse --git-common-dir)/.." && pwd)
+cd "$MAIN"
+
+# Print the non-blank, non-comment lines of a file.
+entries() {
+  [ -f "$1" ] && tr -d '\r' < "$1" | grep -v '^[[:space:]]*\(#\|$\)' || true
+}
+
+# Name of the remote's default branch (not hard-coded). Set DEFAULT_BRANCH to override.
+default_branch() {
+  if [ -n "$DEFAULT_BRANCH" ]; then echo "$DEFAULT_BRANCH"; return; fi
+  b=$(git ls-remote --symref origin HEAD 2>/dev/null | sed -n 's|^ref: refs/heads/\(.*\)[[:space:]]HEAD$|\1|p')
+  [ -n "$b" ] || b=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')
+  echo "${b:-main}"
+}
+
+# Fetch the remote default branch ($1), then fast-forward the local one. Fast-forward only: never resets or merges.
+sync_default() {
+  git fetch origin "+refs/heads/$1:refs/remotes/origin/$1"
+  current=$(git symbolic-ref --short -q HEAD || true)
+  if [ "$current" = "$1" ]; then
+    if git diff --quiet && git diff --cached --quiet; then
+      git merge --ff-only "origin/$1" >/dev/null 2>&1 \
+        && echo "local $1 is up to date with origin/$1" \
+        || echo "warning: local $1 has commits of its own, so it was not updated (the worktree still uses origin/$1); continuing"
+    else
+      echo "warning: local $1 was not updated: the main checkout has uncommitted changes (the worktree still uses origin/$1); continuing"
+    fi
+  elif git show-ref --verify --quiet "refs/heads/$1"; then
+    git fetch origin "$1:$1" >/dev/null 2>&1 \
+      && echo "local $1 is up to date with origin/$1" \
+      || echo "warning: local $1 was not updated (it has commits of its own, or is checked out in another worktree; the worktree still uses origin/$1); continuing"
+  else
+    git branch "$1" "origin/$1" && echo "created local $1 from origin/$1"
+  fi
+}
+
+usage() {
+  echo "usage: sh scripts/worktree new <issue-number> <slug>"
+  echo "       sh scripts/worktree new <issue-number> <slug> [--no-claim]"
+  echo "       sh scripts/worktree list"
+  echo "       sh scripts/worktree remove <issue-number> <slug>"
+  exit 1
+}
+
+case "$1" in
+  new)
+    [ $# -eq 3 ] || [ $# -eq 4 ] || usage
+    case "$2" in *[!0-9]*|"") echo "issue number must be digits"; exit 1;; esac
+    no_claim=0
+    if [ $# -eq 4 ]; then
+      [ "$4" = "--no-claim" ] || usage
+      no_claim=1
+    fi
+    name="issue-$2-$3"
+    dir=".worktrees/$name"
+
+    default=$(default_branch)
+    light=0
+    if project_doc=$(git show "origin/$default:docs/PROJECT.md" 2>/dev/null); then
+      :
+    elif [ -f "$CALLER/docs/PROJECT.md" ]; then
+      project_doc=$(cat "$CALLER/docs/PROJECT.md")
+    elif [ -f "$MAIN/docs/PROJECT.md" ]; then
+      project_doc=$(cat "$MAIN/docs/PROJECT.md")
+    else
+      project_doc=
+    fi
+    if printf '%s\n' "$project_doc" | tr -d '\r' | grep -Eiq '^process:[[:space:]]*light([[:space:]]*#.*)?[[:space:]]*$'; then
+      light=1
+    fi
+    gates=warn
+    if printf '%s\n' "$project_doc" | tr -d '\r' | grep -Eiq '^gates:[[:space:]]*strict([[:space:]]*#.*)?[[:space:]]*$'; then
+      gates=strict
+    fi
+    claim=0
+    refusal=
+    if [ "$light" -eq 1 ] && [ "$no_claim" -eq 0 ]; then
+      echo "warning: issue not claimed (light process mode); continuing"
+    fi
+    if [ "$light" -eq 0 ] && [ "$no_claim" -eq 0 ]; then
+      if ! command -v gh >/dev/null 2>&1 || ! gh auth status >/dev/null 2>&1; then
+        if [ "$gates" = strict ]; then echo "WARN: strict mode: claim skipped because gh is missing or not logged in; continuing"; else echo "warning: issue not claimed (gh is missing or not logged in); continuing"; fi
+      else
+        # gh api user is required to identify the current assignee.
+        login=$(gh api user --jq .login 2>/dev/null) || login=""
+        if [ -z "$login" ]; then
+          echo "warning: issue not claimed (could not identify the current GitHub user); continuing"
+        else
+          issue=$(gh issue view "$2" --json state,labels,assignees --jq '[.state == "CLOSED", any(.labels[]; .name == "in-progress"), any(.labels[]; .name == "ready"), any(.assignees[]; .login != "'"$login"'"), any(.assignees[]; .login == "'"$login"'")] | join("|")' 2>/dev/null) || {
+            echo "WARN: could not check issue #$2 with gh; creating the worktree without claiming it; continuing"
+            issue=
+          }
+          if [ -n "$issue" ]; then
+          IFS='|' read -r is_closed in_progress ready other_assignee assigned_me <<EOF
+$issue
+EOF
+          if [ "$is_closed" = true ]; then
+            refusal="issue #$2 is closed; ask the Plan owner what to do next"
+          elif [ "$other_assignee" = true ]; then
+            other=$(gh issue view "$2" --json assignees --jq '[.assignees[] | select(.login != "'"$login"'") | .login] | join(", ")' 2>/dev/null) || other="someone else"
+            refusal="issue #$2 is assigned to $other; check with them before continuing"
+          elif [ "$in_progress" = true ] && [ "$assigned_me" = true ]; then
+            echo "Resuming your claim on #$2"
+          elif [ "$in_progress" = true ]; then
+            refusal="issue #$2 is labelled in-progress and unassigned; release it with: gh issue edit $2 --remove-label in-progress"
+          elif [ "$ready" != true ]; then
+            refusal="#$2 is not ready: ask the Plan owner to add the ready label"
+          else
+            claim=1
+          fi
+          if [ -n "$refusal" ]; then
+            if [ "$gates" = strict ]; then
+              echo "$refusal"
+              exit 1
+            fi
+            echo "WARN: $refusal; continuing"
+            if [ "$other_assignee" != true ] && [ "$is_closed" != true ]; then
+              claim=1
+            fi
+          fi
+          fi
+        fi
+      fi
+    fi
+
+    sync_default "$default"
+    git worktree add --no-track "$dir" -b "$name" "origin/$default"
+
+    entries .worktreeinclude | while IFS= read -r f; do
+      if [ -e "$f" ]; then
+        mkdir -p "$dir/$(dirname "$f")"
+        cp -R "$f" "$dir/$f"
+        echo "copied $f"
+      fi
+    done
+
+    entries .worktreelinks | while IFS= read -r f; do
+      if [ ! -e "$MAIN/$f" ]; then
+        echo "skip link $f: not in the main checkout yet (run sh scripts/install there first)"
+        continue
+      fi
+      if [ -e "$dir/$f" ]; then
+        echo "skip link $f: already exists in the worktree (is it tracked?)"
+        continue
+      fi
+      mkdir -p "$dir/$(dirname "$f")"
+      if ln -s "$MAIN/$f" "$dir/$f" 2>/dev/null && [ -L "$dir/$f" ]; then
+        # A symlink is not matched by a "folder/" ignore pattern, so exclude it by name
+        # or it shows up as untracked and can be committed by mistake.
+        mkdir -p .git/info
+        grep -qxF "$f" .git/info/exclude 2>/dev/null || echo "$f" >> .git/info/exclude
+        echo "linked $f"
+      else
+        rm -rf "$dir/$f"
+        echo "could not symlink $f: run sh scripts/install in the worktree instead"
+      fi
+    done
+
+    if [ "$claim" -eq 1 ]; then
+      echo "Claiming #$2 as $login"
+      if claim_error=$(gh issue edit "$2" --add-assignee @me --add-label in-progress --remove-label ready 2>&1); then
+        :
+      else
+        echo "WARN: worktree created, but issue #$2 could not be claimed: ${claim_error:-unknown GitHub error}" >&2
+      fi
+    fi
+
+    echo
+    echo "Worktree ready: $MAIN/$dir  (branch $name)"
+    echo "Next: cd $dir"
+    echo "      sh scripts/install     # skip if your dependencies were linked above"
+    echo "      sh scripts/dev         # runs on port $((3000 + $2))"
+    ;;
+  list)
+    git worktree list
+    ;;
+  remove)
+    [ $# -eq 3 ] || usage
+    git worktree remove ".worktrees/issue-$2-$3"
+    echo "Removed. Delete the branch once its PR is merged: git branch -d issue-$2-$3"
+    ;;
+  *)
+    usage
+    ;;
+esac

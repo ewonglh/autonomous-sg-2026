@@ -1,0 +1,6 @@
+# Folders to symlink from the main checkout into every new worktree (one path per line).
+# KICKOFF: uncomment what your stack can safely share. See docs/PARALLEL.md before linking.
+# A linked folder means every worktree uses the main checkout's copy, so a branch that
+# changes dependencies must run its own install first (remove the link, then install).
+#
+# node_modules

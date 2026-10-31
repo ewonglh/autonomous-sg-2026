@@ -1,0 +1,7 @@
+#!/bin/sh
+# Install dependencies. Used by CI and by every new worktree.
+# KICKOFF: replace the TODO line with your stack's install command.
+set -e
+
+# TODO(kickoff): e.g. npm ci | pip install -r requirements.txt | go mod download
+echo "install: not configured yet (edit scripts/install)"

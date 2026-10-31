@@ -1,0 +1,7 @@
+#!/bin/sh
+# Lint and typecheck. Must be fast and must fail on real problems.
+# KICKOFF: replace the TODO line with your stack's lint and typecheck commands.
+set -e
+
+# TODO(kickoff): e.g. npm run lint && npm run typecheck | ruff check . | go vet ./...
+echo "lint: not configured yet (edit scripts/lint)"

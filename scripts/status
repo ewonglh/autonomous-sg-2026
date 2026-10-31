@@ -1,0 +1,177 @@
+#!/bin/sh
+# Print the project's setup state in priority order. Read-only: it changes nothing.
+# Run it at the start of every session. Exit code 1 means setup is blocked (see BLOCKED lines).
+#
+#   BLOCKED  finish this before any feature work
+#   TODO     needed soon, does not block
+#   WARN     worth knowing
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+blocked=0
+first=""
+todo_first=""
+github_next=""
+
+block() { echo "BLOCKED  $1"; [ -n "$first" ] || first="$2"; blocked=1; }
+todo()  { echo "TODO     $1"; [ -n "$todo_first" ] || todo_first="$2"; }
+warn()  { echo "WARN     $1"; }
+ok()    { echo "ok       $1"; }
+
+# 1. Project described?
+if grep -q "UNCONFIGURED" docs/PROJECT.md 2>/dev/null; then
+  block "docs/PROJECT.md is still UNCONFIGURED" "Follow KICKOFF.md (interview the user, then fill in the TODOs)."
+else
+  ok "docs/PROJECT.md is filled in"
+fi
+
+# Process mode (docs/PROJECT.md). Light skips issues, labels, the scope gate and the reviewer. Missing means full.
+if sed 's/\r$//' docs/PROJECT.md 2>/dev/null | grep -qi '^process:[[:space:]]*light[[:space:]]*$'; then
+  light=1
+  ok "process: light (no issue per change, no reviewer, no scope gate)"
+else
+  light=0
+  ok "process: full"
+fi
+
+# Gate mode comes from the base project copy; kickoff uses the working copy
+# because the base may not have a project file yet. Missing means warn.
+base="origin/${BASE:-main}"
+if gate_project=$(git show "$base:docs/PROJECT.md" 2>/dev/null); then
+  :
+elif [ "$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)" = kickoff ]; then
+  gate_project=$(cat docs/PROJECT.md 2>/dev/null || true)
+else
+  gate_project=""
+fi
+if printf '%s\n' "$gate_project" | sed 's/\r$//' | grep -Eqi '^gates:[[:space:]]*strict([[:space:]]*#.*)?[[:space:]]*$'; then
+  gates=strict
+else
+  gates=warn
+fi
+ok "gates: $gates"
+
+# 2. Scripts wired to the real stack?
+unset_scripts=""
+for s in install dev lint build smoke; do
+  if grep -q "not configured yet" "scripts/$s" 2>/dev/null; then
+    unset_scripts="$unset_scripts $s"
+  fi
+done
+if [ -n "$unset_scripts" ]; then
+  block "scripts not configured yet:$unset_scripts" "Edit those scripts (see KICKOFF.md step 2)."
+else
+  ok "all five scripts are configured"
+fi
+
+# 3. CI set up? The kickoff agent deletes the "KICKOFF:" comment from ci.yml when done.
+if grep -q "KICKOFF" .github/workflows/ci.yml 2>/dev/null; then
+  warn ".github/workflows/ci.yml still has its KICKOFF placeholder"
+else
+  ok "CI workflow is set up"
+fi
+
+# Full-mode project fields that need finishing before the demo is ready.
+if [ "$light" -eq 0 ]; then
+  demo_script=$(awk '/^## Demo script \(the path that must never break\)/ { in_demo=1; next } /^## / { if (in_demo) exit } in_demo { print }' docs/PROJECT.md 2>/dev/null)
+  if printf '%s\n' "$demo_script" | grep -q 'TODO' || ! printf '%s\n' "$demo_script" | grep -Eq '^[0-9]+\. +[^ ]'; then
+    todo "demo script still contains TODO or has no numbered step with text" "Complete the demo script in docs/PROJECT.md."
+  fi
+  grep -qi '^Code freeze:[[:space:]]*TODO' docs/PROJECT.md 2>/dev/null && todo "Code freeze is still TODO" "Set Code freeze in docs/PROJECT.md."
+  if [ "$gates" = strict ]; then
+    grep -qi '^Plan owner:[[:space:]]*TODO' docs/PROJECT.md 2>/dev/null && todo "Plan owner is still TODO" "Set Plan owner in docs/PROJECT.md."
+    grep -qi '^Merger:[[:space:]]*TODO' docs/PROJECT.md 2>/dev/null && todo "Merger is still TODO" "Set Merger in docs/PROJECT.md."
+    grep -qi '^Deputy:[[:space:]]*TODO' docs/PROJECT.md 2>/dev/null && todo "Deputy is still TODO" "Set Deputy in docs/PROJECT.md."
+  fi
+fi
+
+# 4. Secrets. Plaintext is checked separately by check-secrets; never block on env setup.
+if [ -f .env ] && grep -q "DOTENV_PUBLIC_KEY" .env; then
+  ok ".env is encrypted"
+elif [ -f .env ] && awk '
+  /^[[:space:]]*(export[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*=/ {
+    line=$0; sub(/^[^=]*=/, "", line); sub(/[[:space:]]+#.*/, "", line)
+    if (line !~ /^[[:space:]]*(""|\047\047)?[[:space:]]*$/ && $0 !~ /^[[:space:]]*(export[[:space:]]+)?DOTENV_PUBLIC_KEY=/) found=1
+  }
+  END { exit !found }
+' .env; then
+  warn ".env has plaintext values (check-secrets will fail); encrypt before sharing"
+else
+  todo ".env is missing or has no encrypted values yet" "Set secrets when needed, then run dotenvx encrypt."
+fi
+[ -f .env.keys ] || warn ".env.keys not found here (ask the team; never commit it)"
+
+# 5 and 6. GitHub state: labels and issues.
+if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+  if [ -n "$(gh pr list --head kickoff --state open --json number -q '.[].number' 2>/dev/null)" ]; then
+    warn "a kickoff PR is already open: wait for it to merge instead of starting another kickoff"
+  fi
+
+  if [ "$light" -eq 1 ]; then
+    ok "light process: labels and issues are optional"
+  else
+    have=$(gh label list --limit 100 --json name -q '.[].name' 2>/dev/null || true)
+    missing=""
+    for l in task ready in-progress needs-review idea; do
+      echo "$have" | grep -qx "$l" || missing="$missing $l"
+    done
+    if [ -n "$missing" ]; then
+      todo "GitHub labels missing:$missing. An agent may create them: gh label create task; gh label create ready; gh label create in-progress; gh label create needs-review; gh label create idea." "Create missing GitHub labels."
+    else
+      ok "GitHub labels exist"
+    fi
+
+    n=$(gh issue list --label ready --state open --json number -q length 2>/dev/null || echo 0)
+    w=$(gh issue list --label in-progress --state open --json number -q length 2>/dev/null || echo 0)
+    if [ "${n:-0}" -eq 0 ] && [ "${w:-0}" -eq 0 ]; then
+      todo "no open issues labelled ready or in-progress" "Follow docs/INTAKE.md to draft issues from docs/PROJECT.md, with the user's approval."
+    else
+      ok "${n:-0} ready, ${w:-0} in progress"
+    fi
+  fi
+
+  # Read-only checks on main and open PRs. Each failed query is ignored.
+  ci=$(gh run list --branch main --workflow ci --limit 1 --json conclusion,status --jq '.[0].conclusion // empty' 2>/dev/null || true)
+  if [ "$ci" = failure ]; then
+    warn "main's last CI run failed: fix main before new work"
+    github_next="main's last CI run failed: fix main before new work."
+  fi
+
+  repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || true)
+  if [ -z "$repo" ]; then
+    warn "could not confirm main is protected (needs admin rights)"
+  elif protection=$(gh api "repos/$repo/branches/main/protection" 2>&1); then
+    :
+  else
+    case "$protection" in
+      *404*|*"Branch not protected"*) warn "main is not protected (require the ci check and a reviewer)" ;;
+      *) warn "could not confirm main is protected (needs admin rights)" ;;
+    esac
+  fi
+
+  stuck=$(gh pr list --state open --json number,title,mergeable,statusCheckRollup --jq '[.[] | select(.mergeable == "CONFLICTING" or any(.statusCheckRollup[]?; .state == "FAILURE" or .state == "ERROR" or .conclusion == "FAILURE" or .conclusion == "ERROR" or .conclusion == "TIMED_OUT" or .conclusion == "STARTUP_FAILURE" or .conclusion == "ACTION_REQUIRED"))] | .[0:5][] | "\(.number)\t\(.title)"' 2>/dev/null || true)
+  if [ -n "$stuck" ]; then
+    while IFS="$(printf '\t')" read -r number title; do
+      [ -n "$number" ] || continue
+      warn "PR #$number is failing checks or has merge conflicts: $title"
+      [ -n "$github_next" ] || github_next="fix stuck PRs before new work."
+    done <<EOF
+$stuck
+EOF
+  fi
+else
+  warn "gh is missing or not logged in, so labels and issues were not checked (gh auth login)"
+fi
+
+echo
+if [ -n "$first" ]; then
+  echo "Next: $first"
+elif [ -n "$todo_first" ]; then
+  echo "Next: $todo_first"
+elif [ -n "$github_next" ]; then
+  echo "Next: $github_next"
+elif [ "$light" -eq 1 ]; then
+  echo "Next: ask for the change you want and build it on a short branch."
+else
+  echo "Next: pick a ready issue and follow docs/WORKER.md."
+fi
+exit "$blocked"

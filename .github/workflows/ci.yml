@@ -1,0 +1,51 @@
+# One required check, named "ci". It always runs on PRs (no path filters),
+# so branch protection never waits on a check that was skipped.
+# Stack-agnostic: it only calls scripts/. Add your language setup step
+# (e.g. actions/setup-node) at kickoff; nothing else here should change.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions: { contents: read, issues: read, pull-requests: read }
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # KICKOFF: add your language and dependency cache here, e.g.
+      # - uses: actions/setup-node@v4
+      #   with: { node-version-file: .nvmrc, cache: npm }
+
+      - name: Install
+        run: sh scripts/install
+
+      - name: Lint and typecheck
+        run: sh scripts/lint
+
+      - name: Build
+        run: sh scripts/build
+
+      - name: Smoke test (demo path)
+        run: sh scripts/smoke
+
+      - name: Scope check
+        run: sh scripts/check-scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.head_ref }}
+          BASE: ${{ github.base_ref }}
+
+      - name: Structure check
+        run: sh scripts/check-structure
+
+      - name: Secrets check
+        run: sh scripts/check-secrets

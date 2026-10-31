@@ -1,0 +1,15 @@
+# Secrets: the encrypted .env IS committed; the key file is NOT
+.env.keys
+.env.local
+
+# Agent worktrees (scripts/worktree uses .worktrees/; Claude Code's own default is .claude/worktrees/)
+.worktrees/
+.claude/worktrees/
+
+# Common build output and dependencies (extend for your stack)
+node_modules
+dist/
+build/
+__pycache__/
+.venv/
+.DS_Store

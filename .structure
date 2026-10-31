@@ -1,0 +1,32 @@
+# Layout rules, checked by sh scripts/check-structure.
+# allow <name>      an allowed top-level file or folder (name as in git ls-files)
+# max-lines <n>     maximum lines per tracked text file (default 400)
+# ignore <glob>     files exempt from max-lines (shell glob on the full path)
+
+allow .claude
+allow .github
+allow docs
+allow scripts
+allow AGENTS.md
+allow CLAUDE.md
+allow README.md
+allow KICKOFF.md
+allow .gitignore
+allow .gitattributes
+allow .structure
+allow .scope-allow
+allow .worktreeinclude
+allow .worktreelinks
+allow .env
+
+# KICKOFF: uncomment the stack's own top-level folders, e.g.
+# allow src
+# allow tests
+
+max-lines 400
+
+ignore *.lock
+ignore package-lock.json
+ignore pnpm-lock.yaml
+ignore *.md
+ignore .env

@@ -1,0 +1,20 @@
+#!/bin/sh
+# Run the app locally with secrets injected. Each worktree sets its own PORT (issue N uses 3000 + N).
+# KICKOFF: replace the TODO line with your stack's dev command.
+set -e
+
+command -v dotenvx >/dev/null 2>&1 || {
+  echo "dotenvx is missing. Install: curl -sfS https://dotenvx.sh | sh"
+  exit 1
+}
+[ -f .env.keys ] || echo "warning: .env.keys not found. Ask the team for it."
+
+# Port: use $PORT if set, else 3000 + N when run from a worktree named issue-N-*, else 3000.
+if [ -z "$PORT" ]; then
+  n=$(basename "$(git rev-parse --show-toplevel)" | sed -n 's/^issue-\([0-9][0-9]*\)-.*/\1/p')
+  PORT=$((3000 + ${n:-0}))
+fi
+export PORT
+
+# TODO(kickoff): e.g. dotenvx run -- npm run dev | dotenvx run -- python app.py
+echo "dev: not configured yet (edit scripts/dev)"

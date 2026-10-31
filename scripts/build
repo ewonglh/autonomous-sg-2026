@@ -1,0 +1,7 @@
+#!/bin/sh
+# Build the app the way the deploy will.
+# KICKOFF: replace the TODO line with your stack's build command.
+set -e
+
+# TODO(kickoff): e.g. npm run build | go build ./... | docker build .
+echo "build: not configured yet (edit scripts/build)"
