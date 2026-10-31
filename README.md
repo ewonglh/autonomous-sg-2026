@@ -30,6 +30,9 @@ The named volume `app_data` stores the SQLite database at `/data/crowdpulse.db`.
 - Port 3000 already in use: stop whatever else uses it, or change the left-hand number in `compose.yaml` (`"127.0.0.1:3000:8000"`).
 - No public link appears on the host page: wait 10 seconds, then run `docker compose restart tunnel`.
 - Tunnel link does not load on mobile data: restart the tunnel and wait for the host page to show the new link.
+- Q&A slide creation fails after pulling the Q&A schema update: stop local development, then remove `crowdpulse.db` from the repo root before restarting. This deletes local sessions and responses; Docker's separate `app_data` volume is unaffected.
+  - Git Bash, macOS or Linux: `rm crowdpulse.db`
+  - PowerShell: `Remove-Item -LiteralPath .\crowdpulse.db`
 - App changes not showing: rebuild with `docker compose up --build -d`.
 - Live updates stop working: run only one app container. The WebSocket manager is in memory.
 
