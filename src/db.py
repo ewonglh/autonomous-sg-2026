@@ -1,5 +1,6 @@
 import os
 import sqlite3
+from datetime import datetime, timezone
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -47,7 +48,44 @@ def db_path() -> str:
 def connect() -> sqlite3.Connection:
     conn = sqlite3.connect(db_path())
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
+
+
+def create_session(code: str, host_key_hash: str) -> bool:
+    now = datetime.now(timezone.utc).isoformat()
+    conn = connect()
+    try:
+        try:
+            conn.execute(
+                """INSERT INTO sessions
+                   (code, host_key_hash, created_at, last_active_at)
+                   VALUES (?, ?, ?, ?)""",
+                (code, host_key_hash, now, now),
+            )
+            conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            conn.rollback()
+            exists = conn.execute(
+                "SELECT 1 FROM sessions WHERE code = ?", (code,)
+            ).fetchone()
+            if exists:
+                return False
+            raise
+    finally:
+        conn.close()
+
+
+def get_host_key_hash(code: str) -> str | None:
+    conn = connect()
+    try:
+        row = conn.execute(
+            "SELECT host_key_hash FROM sessions WHERE code = ?", (code,)
+        ).fetchone()
+        return row["host_key_hash"] if row else None
+    finally:
+        conn.close()
 
 
 def init_db() -> None:

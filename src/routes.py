@@ -1,22 +1,23 @@
-"""Route stubs. They return contract-shaped dummy data; real logic comes in the next issue."""
+"""HTTP routes for CrowdPulse sessions and polling."""
+import secrets
+
 from fastapi import APIRouter, Depends, Header, HTTPException, WebSocket
 from fastapi.responses import PlainTextResponse
 
-from . import schemas
+from . import db, schemas
+from .auth import hash_host_key, require_host_key
 
 router = APIRouter()
 
 
-def require_host_key(authorization: str | None = Header(default=None)) -> str:
-    # Stub: only checks that a bearer token is present. Real check compares its hash.
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Host key required")
-    return authorization.removeprefix("Bearer ")
-
-
 @router.post("/api/sessions", response_model=schemas.SessionCreated)
 def create_session() -> schemas.SessionCreated:
-    return schemas.SessionCreated(code="ABC123", host_key="dummy-host-key")
+    host_key = secrets.token_urlsafe(32)
+    for _ in range(5):
+        code = secrets.token_hex(4).upper()
+        if db.create_session(code, hash_host_key(host_key)):
+            return schemas.SessionCreated(code=code, host_key=host_key)
+    raise HTTPException(status_code=503, detail="Could not create a unique session")
 
 
 @router.get("/api/sessions/{code}/state", response_model=schemas.SessionState)
