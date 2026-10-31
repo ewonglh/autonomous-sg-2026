@@ -30,7 +30,7 @@ Look for a line containing `https://<random-words>.trycloudflare.com`. Add `/hea
 docker compose down
 ```
 
-Responses live in the named volume `app_data` and survive `down` and `up`. Never run `docker compose down -v`: it deletes the volume and every stored response.
+The named volume `app_data` is set up for SQLite data. Responses will persist across `down` and `up` once the backend writes to it (issue #5).
 
 ## Troubleshooting
 
