@@ -20,7 +20,7 @@ All JSON lives under `/api`. Contract changes are agreed in their owning issues.
 | `POST /api/sessions/{code}/questions/{qid}/responses` | participant | `{option_id \| text}` | `{ok}` |
 | `GET /api/sessions/{code}/results` | host | none | `{results: [{question_id, type, options?: [{option_id, label, count}], words?: [{word, count}]}]}` |
 | `GET /api/sessions/{code}/export.csv` | host | none | CSV file; owned by the CSV issue |
-| `WS /ws/{code}` | anyone | none | server sends `{"type": "question_changed"}` or `{"type": "results_changed"}` |
+| `WS /ws/{code}` | anyone | none | broadcasts `question_changed` after question creation, edits, or selection, and `results_changed` after accepted responses |
 | `GET /healthz` | anyone | none | `{"status": "ok"}` |
 
 Notes:
