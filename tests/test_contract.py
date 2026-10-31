@@ -1,4 +1,6 @@
 import json
+
+from src import db
 from support import ApiTestCase
 
 
@@ -40,10 +42,37 @@ class ContractTests(ApiTestCase):
         self.assertEqual(set(results[1]["words"][0]), {"word", "count"})
 
     def test_response_needs_participant_header(self):
-        path = "/api/sessions/ABC123/questions/1/responses"
-        self.assertEqual(self.request("POST", path, None, {"option_id": 1})[0], 422)
+        session = self.create_session()
+        host = {"authorization": f"Bearer {session['host_key']}"}
+        status, body, _ = self.request(
+            "POST",
+            f"/api/sessions/{session['code']}/questions",
+            host,
+            {
+                "type": "multiple_choice",
+                "text": "Pick one?",
+                "options": ["Yes", "No"],
+            },
+        )
+        self.assertEqual(status, 200)
+        question_id = json.loads(body)["id"]
+        conn = db.connect()
+        try:
+            option_id = conn.execute(
+                "SELECT id FROM options WHERE question_id = ? ORDER BY position LIMIT 1",
+                (question_id,),
+            ).fetchone()["id"]
+        finally:
+            conn.close()
+
+        path = f"/api/sessions/{session['code']}/questions/{question_id}/responses"
+        self.assertEqual(
+            self.request("POST", path, None, {"option_id": option_id})[0], 422
+        )
         headers = {"x-participant-id": "11111111-1111-1111-1111-111111111111"}
-        self.assertEqual(self.request("POST", path, headers, {"option_id": 1})[0], 200)
+        self.assertEqual(
+            self.request("POST", path, headers, {"option_id": option_id})[0], 200
+        )
 
     def test_csv_header_columns(self):
         session = self.create_session()
