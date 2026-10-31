@@ -161,5 +161,7 @@ select { width: auto; }
 .present .qa { font-size: clamp(1rem, 2vw, 1.5rem); }
 .top-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .slide-number { margin: 0; font-size: clamp(1.6rem, 4vw, 3rem); font-weight: 700; line-height: 1; color: var(--muted); font-variant-numeric: tabular-nums; }
+.corner { display: flex; align-items: flex-start; gap: 16px; }
+.join-qr { width: clamp(96px, 14vw, 200px); height: auto; aspect-ratio: 1; border-radius: 8px; background: #fff; }
 .join-hint { font-size: clamp(1rem, 2vw, 1.4rem); }
 .join-hint strong { letter-spacing: 0.08em; }

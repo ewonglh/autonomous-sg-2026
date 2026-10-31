@@ -3,5 +3,6 @@
 # Create a repo-local environment so the project does not alter system Python.
 set -e
 
-python -m venv .venv
+# Macs and some Linux machines only have python3.
+if command -v python >/dev/null 2>&1; then python -m venv .venv; else python3 -m venv .venv; fi
 sh scripts/python -m pip install -r requirements.txt

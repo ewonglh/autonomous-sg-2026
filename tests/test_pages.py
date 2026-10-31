@@ -24,3 +24,19 @@ class PageTests(ApiTestCase):
         _, body, _ = self.request("GET", "/")
         self.assertIn(b'href="/host"', body)
         self.assertIn(b'href="/join"', body)
+
+
+class JoinQrTests(ApiTestCase):
+    def test_link_is_the_public_join_page_only(self):
+        from src.qr import join_link
+        self.assertEqual(join_link("https://abc.trycloudflare.com", "abc123"), "https://abc.trycloudflare.com/join/ABC123")
+
+    def test_link_rejects_anything_but_a_plain_origin(self):
+        from src.qr import join_link
+        for origin, code in [("javascript:alert(1)", "ABC"), ("https://x.com/#key=secret", "ABC"), ("https://x.com/path", "ABC"), ("https://x.com", "../etc")]:
+            with self.assertRaises(ValueError, msg=origin):
+                join_link(origin, code)
+
+    def test_qr_is_an_svg_image(self):
+        from src.qr import qr_svg
+        self.assertTrue(qr_svg("https://x.com/join/ABC").startswith(b"<svg"))

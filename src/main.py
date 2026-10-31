@@ -12,6 +12,7 @@ from .pages import STATIC_DIR
 from .pages import router as pages_router
 from .images import router as images_router
 from .qa import router as qa_router
+from .qr import router as qr_router
 from .routes import close_finished_timers, router
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,7 @@ app.add_exception_handler(ApiError, api_error_handler)
 app.include_router(router)
 app.include_router(qa_router)
 app.include_router(images_router)
+app.include_router(qr_router)
 app.include_router(pages_router)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 

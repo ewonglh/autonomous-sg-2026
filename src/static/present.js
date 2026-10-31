@@ -17,6 +17,10 @@ const hostKey = hostKeyFromHash();
 
 $("join-url").textContent = `${location.host}/join`;
 $("join-code").textContent = code;
+// Scanning the QR opens this session's join link on the phone. It uses this page's own address, so
+// open the presenter screen from the public tunnel link, not localhost. The host key never goes in it.
+$("join-qr").src = `/join/${encodeURIComponent(code)}/qr.svg?origin=${encodeURIComponent(location.origin)}`;
+$("join-qr").hidden = false;
 const countdown = new Countdown($("timer"), () => refresh());
 watchImage(code, () => refresh());
 
