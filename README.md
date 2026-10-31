@@ -30,7 +30,7 @@ Look for a line containing `https://<random-words>.trycloudflare.com`. Add `/hea
 docker compose down
 ```
 
-The named volume `app_data` is set up for SQLite data. Responses will persist across `down` and `up` once the backend writes to it (issue #5).
+The named volume `app_data` stores the SQLite database at `/data/crowdpulse.db`. Responses persist across `docker compose down` and `docker compose up`; `down` keeps named volumes. Do not use `docker compose down -v`, which deletes the database.
 
 ## Troubleshooting
 
