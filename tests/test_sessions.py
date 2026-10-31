@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 import sqlite3
 
@@ -15,6 +16,30 @@ class SessionTests(ApiTestCase):
         self.assertNotEqual(first["code"], second["code"])
         self.assertNotEqual(first["host_key"], second["host_key"])
         self.assertGreaterEqual(len(first["host_key"]), 40)
+
+    def test_session_title_defaults_and_can_be_set(self):
+        default_session = self.create_session()
+        status, body, _ = self.request(
+            "GET", f"/api/sessions/{default_session['code']}/state"
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["title"], "Untitled session")
+
+        status, body, _ = self.request(
+            "POST", "/api/sessions", body={"title": "Welcome"}
+        )
+        self.assertEqual(status, 200)
+        session = json.loads(body)
+        _, state_body, _ = self.request(
+            "GET", f"/api/sessions/{session['code']}/state"
+        )
+        self.assertEqual(json.loads(state_body)["title"], "Welcome")
+
+    def test_session_title_limit_is_enforced(self):
+        status, _, _ = self.request(
+            "POST", "/api/sessions", body={"title": "x" * 121}
+        )
+        self.assertEqual(status, 422)
 
     def test_only_host_key_hash_is_stored(self):
         session = self.create_session()

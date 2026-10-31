@@ -1,27 +1,8 @@
 import asyncio
 import json
 
-from src.main import app
-from support import ApiTestCase
-
-
-async def _ws_first_message(path: str) -> dict:
-    scope = {
-        "type": "websocket", "asgi": {"version": "3.0"}, "path": path, "raw_path": path.encode(),
-        "query_string": b"", "headers": [], "scheme": "ws", "root_path": "", "subprotocols": [],
-        "client": ("test", 0), "server": ("test", 80),
-    }
-    inbox = [{"type": "websocket.connect"}]
-    sent = []
-
-    async def receive():
-        return inbox.pop(0) if inbox else {"type": "websocket.disconnect", "code": 1000}
-
-    async def send(message):
-        sent.append(message)
-
-    await app(scope, receive, send)
-    return {"types": [m["type"] for m in sent], "text": next((m.get("text") for m in sent if m.get("text")), None)}
+from support import ApiTestCase, _call_app
+from test_live_updates import connect_websocket, disconnect_websocket, receive_event
 
 
 class RoomCodeCaseTests(ApiTestCase):
@@ -44,8 +25,21 @@ class RoomCodeCaseTests(ApiTestCase):
     def test_unknown_code_is_still_not_found(self):
         self.assertEqual(self.request("GET", "/api/sessions/nope1234/state")[0], 404)
 
-    def test_websocket_accepts_lowercase_code(self):
-        code = self.create_session()["code"]
-        result = asyncio.run(_ws_first_message(f"/ws/{code.lower()}"))
-        self.assertIn("websocket.accept", result["types"])
-        self.assertEqual(json.loads(result["text"]), {"type": "question_changed"})
+    def test_websocket_with_lowercase_code_gets_room_broadcasts(self):
+        session = self.create_session()
+        code = session["code"]
+        host = {"authorization": f"Bearer {session['host_key']}"}
+
+        async def scenario():
+            task, incoming, outgoing = await connect_websocket(f"/ws/{code.lower()}")
+            try:
+                status, _, _ = await _call_app(
+                    "POST", f"/api/sessions/{code}/questions", host,
+                    {"type": "word_cloud", "text": "Hi?"},
+                )
+                self.assertEqual(status, 200)
+                self.assertEqual(await receive_event(outgoing), "question_changed")
+            finally:
+                await disconnect_websocket(task, incoming)
+
+        asyncio.run(scenario())

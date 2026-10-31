@@ -1,6 +1,6 @@
 # API contract
 
-All JSON lives under `/api`. Any change to this contract is agreed on issue #4 first. Route stubs in `src/routes.py` return dummy data in these shapes until the real logic lands.
+All JSON lives under `/api`. Contract changes are agreed in their owning issues. Route stubs in `src/routes.py` return dummy data in these shapes until the real logic lands.
 
 ## Authentication
 
@@ -11,15 +11,16 @@ All JSON lives under `/api`. Any change to this contract is agreed on issue #4 f
 
 | Method and path | Who | Body | Returns |
 | --- | --- | --- | --- |
-| `POST /api/sessions` | anyone | none | `{code, host_key}`. The key is shown once; store only its hash. |
-| `GET /api/sessions/{code}/state` | public | none | `{title, active_question: {id, type, text, options[{id,label}], is_open, results_visible} \| null}` |
+| `POST /api/sessions` | anyone | `{title?}` | `{code, host_key}`. Title defaults to `Untitled session` and is limited to 120 characters. The host key is shown once; store only its hash. |
+| `GET /api/sessions/{code}/state` | public | none | `{title, active_question: {id, type, text, options[{id,label}], is_open, results_visible, response_count, results} \| null}`. `results` is `null` until revealed; then it contains `options[{option_id,label,count}]` or `words[{word,count}]`. |
+| `GET /api/sessions/{code}/questions` | host | none | `{active_question_id, questions: [{id, position, type, text, options[{id,label}], is_open, results_visible, response_count}]}`. Ordered by position. |
 | `POST /api/sessions/{code}/questions` | host | `{type: "multiple_choice" \| "word_cloud", text, options[]}` | `{id}` |
 | `PATCH /api/sessions/{code}/questions/{qid}` | host | `{is_open?, results_visible?}` | `{ok}` |
 | `POST /api/sessions/{code}/active` | host | `{question_id}` | `{ok}` |
 | `POST /api/sessions/{code}/questions/{qid}/responses` | participant | `{option_id \| text}` | `{ok}` |
 | `GET /api/sessions/{code}/results` | host | none | `{results: [{question_id, type, options?: [{option_id, label, count}], words?: [{word, count}]}]}` |
 | `GET /api/sessions/{code}/export.csv` | host | none | CSV file; owned by the CSV issue |
-| `WS /ws/{code}` | anyone | none | server sends `{"type": "question_changed"}` or `{"type": "results_changed"}` |
+| `WS /ws/{code}` | anyone | none | broadcasts `question_changed` after question creation, edits, or selection, and `results_changed` after accepted responses |
 | `GET /healthz` | anyone | none | `{"status": "ok"}` |
 
 Notes:
