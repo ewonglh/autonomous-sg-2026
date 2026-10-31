@@ -20,6 +20,7 @@ allow .worktreelinks
 allow .env
 
 allow src
+allow tests
 allow Dockerfile
 allow compose.yaml
 allow requirements.txt

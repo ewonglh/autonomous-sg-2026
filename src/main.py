@@ -1,7 +1,20 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
-app = FastAPI(title="CrowdPulse")
+from .db import init_db
+from .routes import router
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(title="CrowdPulse", lifespan=lifespan)
+app.include_router(router)
 
 
 @app.get("/", response_class=HTMLResponse)

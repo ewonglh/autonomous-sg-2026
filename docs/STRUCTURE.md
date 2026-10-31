@@ -11,7 +11,7 @@ The layout of this repo and the rules for adding to it. `sh scripts/check-struct
 |-- docs/           Project docs
 |-- scripts/        install, dev, lint, build, smoke, worktree, checks
 |-- src/            FastAPI app and static assets, grouped by module
-|-- tests/          not created yet; add focused smoke coverage as features land
+|-- tests/          contract-shape tests (run: sh scripts/python -m unittest discover tests)
 `-- (root files)    AGENTS.md, CLAUDE.md, KICKOFF.md, README.md, .structure, config
 ```
 
