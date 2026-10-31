@@ -217,7 +217,7 @@ select { width: auto; cursor: pointer; }
 .bar-label { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; font-weight: 600; }
 .bar-label .muted { font-weight: 500; font-variant-numeric: tabular-nums; }
 .bar-track { height: 24px; background: var(--surface-2); border-radius: 99px; overflow: hidden; }
-.bar-fill { height: 100%; min-width: 6px; border-radius: 99px; transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1); }
+.bar-fill { height: 100%; border-radius: 99px; transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1); }
 
 /* Donut chart */
 .donut { display: flex; gap: 32px; align-items: center; flex-wrap: wrap; justify-content: center; }
