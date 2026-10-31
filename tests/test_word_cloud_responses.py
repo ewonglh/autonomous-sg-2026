@@ -122,7 +122,7 @@ class WordCloudResponseTests(ApiTestCase):
             {"text": "Not a vote"},
         )
 
-        self.assertEqual(status, 409)
+        self.assertEqual(status, 422)
         self.assertEqual(self.stored_responses(), [])
 
     def test_rejects_questions_from_another_session(self):

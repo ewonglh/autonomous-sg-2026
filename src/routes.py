@@ -11,6 +11,16 @@ from .auth import hash_host_key, require_host_key
 router = APIRouter()
 
 
+def parse_participant_id(value: str) -> str:
+    try:
+        return str(UUID(value))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="X-Participant-Id must be a UUID",
+        ) from exc
+
+
 @router.post("/api/sessions", response_model=schemas.SessionCreated)
 def create_session() -> schemas.SessionCreated:
     host_key = secrets.token_urlsafe(32)
@@ -65,24 +75,47 @@ def submit_response(
     body: schemas.ResponseCreate,
     x_participant_id: str = Header(),
 ) -> schemas.Ok:
-    if body.option_id is not None or body.text is None or len(body.text) > 200:
+    participant_id = parse_participant_id(x_participant_id)
+    if body.option_id is not None:
+        if body.text is not None:
+            raise HTTPException(
+                status_code=422,
+                detail="Multiple-choice responses need an option_id only",
+            )
+        result = db.save_multiple_choice_response(
+            code, qid, participant_id, body.option_id
+        )
+        if result == "not_found":
+            raise HTTPException(status_code=404, detail="Session or question not found")
+        if result == "wrong_type":
+            raise HTTPException(
+                status_code=422,
+                detail="Question does not accept multiple-choice responses",
+            )
+        if result == "closed":
+            raise HTTPException(status_code=409, detail="Question is closed")
+        if result == "invalid_option":
+            raise HTTPException(
+                status_code=422, detail="Option does not belong to this question"
+            )
+        if result == "duplicate":
+            raise HTTPException(
+                status_code=409, detail="Participant has already responded"
+            )
+        return schemas.Ok()
+
+    if body.text is None or len(body.text) > 200:
         raise HTTPException(status_code=422, detail="Invalid word-cloud response")
     text = body.text.strip()
     if not text:
         raise HTTPException(status_code=422, detail="Response text must not be blank")
-    try:
-        participant_id = str(UUID(x_participant_id))
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=422, detail="Participant ID must be a UUID"
-        ) from exc
 
     result = db.save_word_cloud_response(code, qid, participant_id, text)
     if result == "not_found":
         raise HTTPException(status_code=404, detail="Question not found in session")
     if result == "wrong_type":
         raise HTTPException(
-            status_code=409, detail="Question is not a word-cloud question"
+            status_code=422, detail="Question does not accept text responses"
         )
     if result == "closed":
         raise HTTPException(status_code=409, detail="Question is closed")
