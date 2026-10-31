@@ -251,6 +251,83 @@ def update_question_state(code: str, question_id: int, changes: dict[str, bool])
         conn.close()
 
 
+def edit_question(
+    code: str, question_id: int, text: str | None, option_labels: list[str] | None
+) -> Literal["ok", "not_found", "wrong_type", "has_responses"]:
+    """Change a slide's text and/or options. Options only change before any response."""
+    conn = connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        question = conn.execute(
+            """SELECT q.type FROM questions q JOIN sessions s ON s.id = q.session_id
+               WHERE s.code = ? AND q.id = ?""",
+            (code, question_id),
+        ).fetchone()
+        if question is None:
+            conn.rollback()
+            return "not_found"
+        if option_labels is not None:
+            if question["type"] != "multiple_choice":
+                conn.rollback()
+                return "wrong_type"
+            answered = conn.execute(
+                "SELECT 1 FROM responses WHERE question_id = ?", (question_id,)
+            ).fetchone()
+            if answered is not None:
+                conn.rollback()
+                return "has_responses"
+            conn.execute("DELETE FROM options WHERE question_id = ?", (question_id,))
+            conn.executemany(
+                "INSERT INTO options (question_id, position, label) VALUES (?, ?, ?)",
+                [(question_id, i, label) for i, label in enumerate(option_labels, start=1)],
+            )
+        if text is not None:
+            conn.execute("UPDATE questions SET text = ? WHERE id = ?", (text, question_id))
+        conn.commit()
+        return "ok"
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def delete_question(code: str, question_id: int) -> bool:
+    """Remove a slide with its options and responses; renumber the rest 1..N."""
+    conn = connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        session = conn.execute(
+            """SELECT s.id FROM sessions s JOIN questions q ON q.session_id = s.id
+               WHERE s.code = ? AND q.id = ?""",
+            (code, question_id),
+        ).fetchone()
+        if session is None:
+            conn.rollback()
+            return False
+        conn.execute(
+            "UPDATE sessions SET active_question_id = NULL WHERE id = ? AND active_question_id = ?",
+            (session["id"], question_id),
+        )
+        conn.execute("DELETE FROM responses WHERE question_id = ?", (question_id,))
+        conn.execute("DELETE FROM options WHERE question_id = ?", (question_id,))
+        conn.execute("DELETE FROM questions WHERE id = ?", (question_id,))
+        remaining = conn.execute(
+            "SELECT id FROM questions WHERE session_id = ? ORDER BY position", (session["id"],)
+        ).fetchall()
+        conn.executemany(
+            "UPDATE questions SET position = ? WHERE id = ?",
+            [(i, row["id"]) for i, row in enumerate(remaining, start=1)],
+        )
+        conn.commit()
+        return True
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def set_active_question(code: str, question_id: int) -> bool:
     conn = connect()
     try:

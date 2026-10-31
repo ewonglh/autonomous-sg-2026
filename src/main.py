@@ -5,6 +5,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from .db import init_db
+from .errors import ApiError, api_error_handler
 from .pages import STATIC_DIR
 from .pages import router as pages_router
 from .routes import router
@@ -17,6 +18,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="CrowdPulse", lifespan=lifespan)
+app.add_exception_handler(ApiError, api_error_handler)
 app.include_router(router)
 app.include_router(pages_router)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
