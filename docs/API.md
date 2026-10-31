@@ -26,6 +26,7 @@ Notes:
 
 - `type` is `multiple_choice` or `word_cloud`. `options` is used for multiple choice only.
 - Responses: a repeat vote for multiple choice returns 409. Word cloud allows up to 3 responses per participant.
+- Slide limits (422 if broken): question text is trimmed, 1 to 300 characters; poll options are trimmed, 2 to 10 of them, 1 to 100 characters each, no duplicates ignoring case.
 - Host routes return 401 without a bearer key.
 - After a WebSocket message, clients refetch `state`.
 - The `{ok}` and `{id}` replies for write routes are the skeleton's choice; they were not specified in the issue.
