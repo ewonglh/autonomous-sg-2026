@@ -1,10 +1,25 @@
 // Shared helpers for talking to the CrowdPulse API. See docs/API.md.
 
 export class ApiError extends Error {
-  constructor(status, message) {
+  constructor(status, message, code) {
     super(message);
     this.status = status;
+    this.code = code; // short reason from the server when it sends one (issue #36)
   }
+}
+
+// Why the server turned an answer down: "already_responded", "closed", "rate_limited",
+// "limit_reached" or "other".
+// Uses the server's `code` when there is one, otherwise reads the message (the server uses status
+// 409 for several different reasons today, so the status alone is not enough).
+export function rejection(err) {
+  const text = err.message || "";
+  if (["already_responded", "closed", "rate_limited", "limit_reached"].includes(err.code)) return err.code;
+  if (err.status === 429 || /rate limit/i.test(text)) return "rate_limited";
+  if (err.status === 409 && /already/i.test(text)) return "already_responded";
+  if (/closed/i.test(text)) return "closed";
+  if (/limit/i.test(text)) return "limit_reached";
+  return "other";
 }
 
 // The session code is the last part of the page path, e.g. /host/ABC123.
@@ -44,14 +59,17 @@ export async function request(method, path, { body, hostKey, participant } = {})
   });
   if (!res.ok) {
     let detail = res.statusText;
+    let code;
     try {
-      detail = (await res.json()).detail || detail;
+      const body = await res.json();
+      detail = body.detail || detail;
+      code = body.code;
     } catch {
       /* not JSON */
     }
     // FastAPI validation errors (422) come as a list of {loc, msg}; show the first message.
     if (Array.isArray(detail)) detail = detail.map((d) => d.msg).filter(Boolean)[0];
-    throw new ApiError(res.status, typeof detail === "string" && detail ? detail : `Request failed (${res.status})`);
+    throw new ApiError(res.status, typeof detail === "string" && detail ? detail : `Request failed (${res.status})`, code);
   }
   const type = res.headers.get("Content-Type") || "";
   return type.includes("application/json") ? res.json() : res.blob();
