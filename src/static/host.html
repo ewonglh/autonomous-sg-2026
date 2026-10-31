@@ -9,6 +9,7 @@
   </head>
   <body>
     <main class="wide">
+      <header class="brand"><span class="logo">CrowdPulse</span></header>
       <form id="create" class="card stack" hidden>
         <h1>Start a session</h1>
         <label for="title-input" class="muted">Session title</label>
@@ -62,7 +63,13 @@
 
         <section id="panel-slides" class="tab-panel" role="tabpanel" aria-labelledby="tab-slides" hidden>
           <section class="card">
-            <h2>Slides</h2>
+            <div class="row">
+              <h2>Slides</h2>
+              <button id="save-deck" type="button">Save slides</button>
+              <label class="button" for="load-deck-file">Load slides</label>
+              <input id="load-deck-file" type="file" accept=".json,application/json" hidden>
+            </div>
+            <p id="deck-status" class="muted" aria-live="polite" hidden></p>
             <p class="muted">Drag to reorder, or use the arrow buttons.</p>
             <p id="image-status" class="muted" aria-live="polite" hidden></p>
             <ol id="questions" class="qlist"></ol>

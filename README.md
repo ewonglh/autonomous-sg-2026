@@ -12,6 +12,8 @@ cd autonomous-sg-2026
 docker compose up --build -d
 ```
 
+On Windows, double-click `scripts/host.bat` for a menu to start hosting, show the temporary link, or stop while keeping responses.
+
 Open <http://localhost:3000/host>, create a session, and add questions. The app finds the temporary Cloudflare link automatically and uses it for the participant link and presenter QR.
 
 The first start may take a few minutes. The temporary link changes whenever the tunnel restarts.
