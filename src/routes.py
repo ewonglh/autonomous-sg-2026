@@ -1,23 +1,23 @@
-"""Route stubs. They return contract-shaped dummy data; real logic comes in the next issue."""
+"""HTTP routes for CrowdPulse sessions and polling."""
+import secrets
+
 from fastapi import APIRouter, Depends, Header, HTTPException, WebSocket
 from fastapi.responses import Response
 
-from . import csv_export, db
-from . import schemas
+from . import csv_export, db, schemas
+from .auth import hash_host_key, require_host_key
 
 router = APIRouter()
 
 
-def require_host_key(authorization: str | None = Header(default=None)) -> str:
-    # Stub: only checks that a bearer token is present. Real check compares its hash.
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Host key required")
-    return authorization.removeprefix("Bearer ")
-
-
 @router.post("/api/sessions", response_model=schemas.SessionCreated)
 def create_session() -> schemas.SessionCreated:
-    return schemas.SessionCreated(code="ABC123", host_key="dummy-host-key")
+    host_key = secrets.token_urlsafe(32)
+    for _ in range(5):
+        code = secrets.token_hex(4).upper()
+        if db.create_session(code, hash_host_key(host_key)):
+            return schemas.SessionCreated(code=code, host_key=host_key)
+    raise HTTPException(status_code=503, detail="Could not create a unique session")
 
 
 @router.get("/api/sessions/{code}/state", response_model=schemas.SessionState)
@@ -37,7 +37,10 @@ def get_state(code: str) -> schemas.SessionState:
 def create_question(
     code: str, body: schemas.QuestionCreate, _key: str = Depends(require_host_key)
 ) -> schemas.QuestionCreated:
-    return schemas.QuestionCreated(id=1)
+    question_id = db.create_question(code, body.type, body.text, body.options)
+    if question_id is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return schemas.QuestionCreated(id=question_id)
 
 
 @router.patch("/api/sessions/{code}/questions/{qid}", response_model=schemas.Ok)

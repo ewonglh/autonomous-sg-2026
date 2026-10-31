@@ -1,5 +1,6 @@
 import os
 import sqlite3
+from datetime import datetime, timezone
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -47,7 +48,83 @@ def db_path() -> str:
 def connect() -> sqlite3.Connection:
     conn = sqlite3.connect(db_path())
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
+
+
+def create_session(code: str, host_key_hash: str) -> bool:
+    now = datetime.now(timezone.utc).isoformat()
+    conn = connect()
+    try:
+        try:
+            conn.execute(
+                """INSERT INTO sessions
+                   (code, host_key_hash, created_at, last_active_at)
+                   VALUES (?, ?, ?, ?)""",
+                (code, host_key_hash, now, now),
+            )
+            conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            conn.rollback()
+            exists = conn.execute(
+                "SELECT 1 FROM sessions WHERE code = ?", (code,)
+            ).fetchone()
+            if exists:
+                return False
+            raise
+    finally:
+        conn.close()
+
+
+def get_host_key_hash(code: str) -> str | None:
+    conn = connect()
+    try:
+        row = conn.execute(
+            "SELECT host_key_hash FROM sessions WHERE code = ?", (code,)
+        ).fetchone()
+        return row["host_key_hash"] if row else None
+    finally:
+        conn.close()
+
+
+def create_question(
+    code: str, question_type: str, text: str, option_labels: list[str]
+) -> int | None:
+    conn = connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        session = conn.execute(
+            "SELECT id FROM sessions WHERE code = ?", (code,)
+        ).fetchone()
+        if session is None:
+            conn.rollback()
+            return None
+
+        session_id = session["id"]
+        position = conn.execute(
+            "SELECT COALESCE(MAX(position), 0) + 1 FROM questions WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()[0]
+        cursor = conn.execute(
+            "INSERT INTO questions (session_id, position, type, text) VALUES (?, ?, ?, ?)",
+            (session_id, position, question_type, text),
+        )
+        question_id = cursor.lastrowid
+        conn.executemany(
+            "INSERT INTO options (question_id, position, label) VALUES (?, ?, ?)",
+            (
+                (question_id, option_position, label)
+                for option_position, label in enumerate(option_labels, start=1)
+            ),
+        )
+        conn.commit()
+        return question_id
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def init_db() -> None:

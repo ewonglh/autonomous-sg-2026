@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class SessionCreated(BaseModel):
@@ -31,6 +31,30 @@ class QuestionCreate(BaseModel):
     type: Literal["multiple_choice", "word_cloud"]
     text: str
     options: list[str] = Field(default_factory=list)
+
+    @field_validator("text")
+    @classmethod
+    def require_question_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Question text must not be blank")
+        return value
+
+    @field_validator("options")
+    @classmethod
+    def require_option_labels(cls, values: list[str]) -> list[str]:
+        values = [value.strip() for value in values]
+        if any(not value for value in values):
+            raise ValueError("Option labels must not be blank")
+        return values
+
+    @model_validator(mode="after")
+    def validate_options_for_type(self) -> "QuestionCreate":
+        if self.type == "multiple_choice" and len(self.options) < 2:
+            raise ValueError("Multiple-choice questions need at least two options")
+        if self.type == "word_cloud" and self.options:
+            raise ValueError("Word-cloud questions do not accept choice options")
+        return self
 
 
 class QuestionCreated(BaseModel):

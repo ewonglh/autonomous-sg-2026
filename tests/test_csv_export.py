@@ -7,6 +7,7 @@ import tempfile
 import unittest
 
 from src.db import connect, init_db
+from src.auth import hash_host_key
 from src.main import app
 
 
@@ -53,7 +54,8 @@ class CsvExportTests(unittest.TestCase):
         conn = connect()
         conn.execute(
             "INSERT INTO sessions (code, host_key_hash, title, created_at, last_active_at) "
-            "VALUES ('CSV123', 'unused', 'Test', '2026-10-31T00:00:00Z', '2026-10-31T00:00:00Z')"
+            "VALUES ('CSV123', ?, 'Test', '2026-10-31T00:00:00Z', '2026-10-31T00:00:00Z')",
+            (hash_host_key("dummy"),),
         )
         conn.commit()
         conn.close()
