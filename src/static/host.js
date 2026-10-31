@@ -7,6 +7,7 @@ import { imageOf, saveImage, shrinkImage, uploadImage } from "./image.js";
 import { byPosition, loadSlides, localSlides, notFound, patchLocal, saveLocal, showSlide } from "./slides.js";
 import { renderLiveDashboard, renderResultsDashboard, setupHostDashboard } from "./host-dashboard.js";
 import { watchPublicLink } from "./public-link.js";
+import { setupDeckControls } from "./decks.js";
 
 const $ = (id) => document.getElementById(id);
 const code = codeFromPath();
@@ -56,6 +57,7 @@ function start() {
   };
   $("start").onclick = startPresentation;
   $("export").onclick = exportCsv;
+  setupDeckControls({ code, hostKey, getSlides: () => slides, onLoaded: refresh });
   enableDragReorder($("questions"));
   $("add").addEventListener("submit", addSlide);
   $("q-type").addEventListener("change", typeChanged);
