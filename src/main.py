@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -10,13 +12,27 @@ from .pages import STATIC_DIR
 from .pages import router as pages_router
 from .images import router as images_router
 from .qa import router as qa_router
-from .routes import router
+from .routes import close_finished_timers, router
+
+logger = logging.getLogger(__name__)
+
+
+async def run_slide_timers() -> None:
+    """Close timed slides at zero even when nobody is asking for the state."""
+    while True:
+        await asyncio.sleep(0.5)
+        try:
+            await close_finished_timers()
+        except Exception:
+            logger.exception("Slide timer check failed")
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
+    timer_task = asyncio.create_task(run_slide_timers())
     yield
+    timer_task.cancel()
 
 
 app = FastAPI(title="CrowdPulse", lifespan=lifespan)
