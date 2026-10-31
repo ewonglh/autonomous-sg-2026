@@ -60,6 +60,7 @@ class QuestionListItem(BaseModel):
     chart: ChartStyle | None = None
     time_limit: int | None = None
     seconds_left: int | None = None
+    image_url: str | None = None
 
 
 class QuestionList(BaseModel):
@@ -173,6 +174,7 @@ class ActiveQuestion(BaseModel):
     chart: ChartStyle | None = None
     time_limit: int | None = None
     seconds_left: int | None = None
+    image_url: str | None = None
 
 
 class SessionState(BaseModel):
@@ -212,3 +214,7 @@ class QaCreate(BaseModel):
         if not value:
             raise ValueError("Question text must not be blank")
         return value
+
+
+class ImageUpload(BaseModel):
+    data_url: str

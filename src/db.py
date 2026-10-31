@@ -39,6 +39,13 @@ CREATE TABLE IF NOT EXISTS responses (
     text TEXT,
     created_at TEXT NOT NULL
 );
+-- One optional picture per slide, kept apart so state reads stay small.
+CREATE TABLE IF NOT EXISTS question_images (
+    question_id INTEGER PRIMARY KEY REFERENCES questions(id),
+    media_type TEXT NOT NULL,
+    data BLOB NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1
+);
 CREATE TABLE IF NOT EXISTS qa_items (
     id INTEGER PRIMARY KEY,
     question_id INTEGER NOT NULL REFERENCES questions(id),
@@ -345,6 +352,7 @@ def delete_question(code: str, question_id: int) -> bool:
             (question_id,),
         )
         conn.execute("DELETE FROM qa_items WHERE question_id = ?", (question_id,))
+        conn.execute("DELETE FROM question_images WHERE question_id = ?", (question_id,))
         conn.execute("DELETE FROM responses WHERE question_id = ?", (question_id,))
         conn.execute("DELETE FROM options WHERE question_id = ?", (question_id,))
         conn.execute("DELETE FROM questions WHERE id = ?", (question_id,))

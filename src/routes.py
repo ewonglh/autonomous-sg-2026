@@ -12,7 +12,7 @@ from fastapi import (
 )
 from fastapi.responses import Response
 
-from . import csv_export, db, question_order, schemas, timers
+from . import csv_export, db, image_store, question_order, schemas, timers
 from .codes import RoomCode
 from .auth import hash_host_key, require_host_key
 from .errors import ApiError
@@ -120,6 +120,7 @@ def get_state(code: RoomCode) -> schemas.SessionState:
     active_question = state["active_question"]
     if active_question:
         timers.add_seconds_left(active_question)
+        active_question["image_url"] = image_store.image_urls(code).get(active_question["id"])
     # Q&A slides ignore results_visible; their items come from the Q&A routes.
     if (
         active_question
@@ -156,7 +157,9 @@ def get_questions(
     questions = db.get_session_questions(code)
     if questions is None:
         raise HTTPException(status_code=404, detail="Session not found")
+    urls = image_store.image_urls(code)
     for question in questions["questions"]:
+        question["image_url"] = urls.get(question["id"])
         timers.add_seconds_left(question)
     response = schemas.QuestionList(**questions)
     db.touch_session_activity(code)
