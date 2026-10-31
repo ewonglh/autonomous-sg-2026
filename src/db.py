@@ -264,6 +264,52 @@ def get_session_state(code: str) -> dict | None:
         conn.close()
 
 
+def save_word_cloud_response(
+    code: str, question_id: int, participant_id: str, text: str
+) -> str:
+    conn = connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        question = conn.execute(
+            """SELECT q.type, q.is_open
+               FROM questions AS q
+               JOIN sessions AS s ON s.id = q.session_id
+               WHERE s.code = ? AND q.id = ?""",
+            (code, question_id),
+        ).fetchone()
+        if question is None:
+            result = "not_found"
+        elif question["type"] != "word_cloud":
+            result = "wrong_type"
+        elif not question["is_open"]:
+            result = "closed"
+        else:
+            response_count = conn.execute(
+                """SELECT COUNT(*) FROM responses
+                   WHERE question_id = ? AND participant_id = ?""",
+                (question_id, participant_id),
+            ).fetchone()[0]
+            if response_count >= 3:
+                result = "limit_reached"
+            else:
+                created_at = datetime.now(timezone.utc).isoformat()
+                conn.execute(
+                    """INSERT INTO responses
+                       (question_id, participant_id, text, created_at)
+                       VALUES (?, ?, ?, ?)""",
+                    (question_id, participant_id, text, created_at),
+                )
+                conn.commit()
+                return "saved"
+        conn.rollback()
+        return result
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def init_db() -> None:
     conn = connect()
     try:
