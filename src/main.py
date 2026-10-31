@@ -8,6 +8,7 @@ from .db import init_db
 from .errors import ApiError, api_error_handler
 from .pages import STATIC_DIR
 from .pages import router as pages_router
+from .images import router as images_router
 from .qa import router as qa_router
 from .routes import router
 
@@ -22,6 +23,7 @@ app = FastAPI(title="CrowdPulse", lifespan=lifespan)
 app.add_exception_handler(ApiError, api_error_handler)
 app.include_router(router)
 app.include_router(qa_router)
+app.include_router(images_router)
 app.include_router(pages_router)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
