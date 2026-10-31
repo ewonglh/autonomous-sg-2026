@@ -2,6 +2,12 @@
 
 Agents read this file for context. Keep the full build plan in the team's planning space; this is the short version everyone needs to work.
 
+## Open items for the team
+
+- [ ] Confirm the Plan owner (currently LimZiJing).
+- [ ] Set the exact submission deadline and presentation time, then replace the placeholders under "Deadline and code freeze".
+- [ ] Agree routes, JSON shapes and CSV columns before parallel work starts.
+
 Plan owner: LimZiJing (assumed kickoff lead; confirm with team)
 Merger: none (warn gates)
 Deputy: none (warn gates)

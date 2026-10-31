@@ -92,4 +92,9 @@ These rules are tool-neutral: they use only git, `gh` and `scripts/`, so any age
 
 ## Known gotchas
 
+- Run one app process only: the WebSocket manager lives in memory, so more workers break live updates.
+- The host control key goes only in the URL fragment and an authorization header. Never put it in the participant link, QR code, logs or an issue. Store only its hash.
+- Quick Tunnel supports WebSockets but not server-sent events, and its URL changes on restart.
+- Browser ID limits casual duplicate votes; it is not proof of one vote per person. Do not collect names, emails or IP addresses.
+- CSV export: use a standard CSV writer, UTF-8 with BOM, and prefix text cells starting with `=`, `+`, `-` or `@` to stop formula injection.
 - (Teams append here.)

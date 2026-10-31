@@ -37,6 +37,10 @@ For local development, install Python dependencies into this repo's `.venv` with
 
 The target CSV has one row per response with session code, question order and type, question text, choice or free-text answer, anonymous participant ID, and UTC submission time. Text cells must be protected against spreadsheet formula injection.
 
+## Contributing
+
+New teammates read `docs/START-HERE.md`, then for each GitHub issue run `sh scripts/worktree new <N> <slug>`. `AGENTS.md` has the rules.
+
 ## Team
 
 - LimZiJing: session, question, and response APIs
