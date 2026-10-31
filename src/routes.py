@@ -83,6 +83,11 @@ def parse_participant_id(value: str) -> str:
         ) from exc
 
 
+def reject_expired_session(code: RoomCode) -> None:
+    if db.session_is_expired(code):
+        raise HTTPException(status_code=404, detail="Session not found")
+
+
 @router.post("/api/sessions", response_model=schemas.SessionCreated)
 def create_session(
     body: schemas.SessionCreate | None = None,
@@ -97,7 +102,11 @@ def create_session(
     raise HTTPException(status_code=503, detail="Could not create a unique session")
 
 
-@router.get("/api/sessions/{code}/state", response_model=schemas.SessionState)
+@router.get(
+    "/api/sessions/{code}/state",
+    response_model=schemas.SessionState,
+    dependencies=[Depends(reject_expired_session)],
+)
 def get_state(code: RoomCode) -> schemas.SessionState:
     state = db.get_session_state(code)
     if state is None:
@@ -118,11 +127,15 @@ def get_state(code: RoomCode) -> schemas.SessionState:
                 if result["type"] == "multiple_choice"
                 else {"words": result["words"]}
             )
-    return schemas.SessionState(**state)
+    response = schemas.SessionState(**state)
+    db.touch_session_activity(code)
+    return response
 
 
 @router.get(
-    "/api/sessions/{code}/questions", response_model=schemas.QuestionList
+    "/api/sessions/{code}/questions",
+    response_model=schemas.QuestionList,
+    dependencies=[Depends(reject_expired_session)],
 )
 def get_questions(
     code: RoomCode, _key: str = Depends(require_host_key)
@@ -130,10 +143,16 @@ def get_questions(
     questions = db.get_session_questions(code)
     if questions is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    return schemas.QuestionList(**questions)
+    response = schemas.QuestionList(**questions)
+    db.touch_session_activity(code)
+    return response
 
 
-@router.post("/api/sessions/{code}/questions", response_model=schemas.QuestionCreated)
+@router.post(
+    "/api/sessions/{code}/questions",
+    response_model=schemas.QuestionCreated,
+    dependencies=[Depends(reject_expired_session)],
+)
 async def create_question(
     code: RoomCode, body: schemas.QuestionCreate, _key: str = Depends(require_host_key)
 ) -> schemas.QuestionCreated:
@@ -141,10 +160,16 @@ async def create_question(
     if question_id is None:
         raise HTTPException(status_code=404, detail="Session not found")
     await publish_event(code, "question_changed")
-    return schemas.QuestionCreated(id=question_id)
+    response = schemas.QuestionCreated(id=question_id)
+    db.touch_session_activity(code)
+    return response
 
 
-@router.patch("/api/sessions/{code}/questions/{qid}", response_model=schemas.Ok)
+@router.patch(
+    "/api/sessions/{code}/questions/{qid}",
+    response_model=schemas.Ok,
+    dependencies=[Depends(reject_expired_session)],
+)
 async def update_question(
     code: RoomCode, qid: int, body: schemas.QuestionUpdate, _key: str = Depends(require_host_key)
 ) -> schemas.Ok:
@@ -162,30 +187,47 @@ async def update_question(
         raise HTTPException(status_code=404, detail="Question not found")
     if changes or text is not None or options is not None:
         await publish_event(code, "question_changed")
-    return schemas.Ok()
+    response = schemas.Ok()
+    db.touch_session_activity(code)
+    return response
 
 
-@router.delete("/api/sessions/{code}/questions/{qid}", response_model=schemas.Ok)
+@router.delete(
+    "/api/sessions/{code}/questions/{qid}",
+    response_model=schemas.Ok,
+    dependencies=[Depends(reject_expired_session)],
+)
 async def delete_question(
     code: RoomCode, qid: int, _key: str = Depends(require_host_key)
 ) -> schemas.Ok:
     if not db.delete_question(code, qid):
         raise HTTPException(status_code=404, detail="Question not found")
     await publish_event(code, "question_changed")
+    db.touch_session_activity(code)
     return schemas.Ok()
 
 
-@router.post("/api/sessions/{code}/active", response_model=schemas.Ok)
+@router.post(
+    "/api/sessions/{code}/active",
+    response_model=schemas.Ok,
+    dependencies=[Depends(reject_expired_session)],
+)
 async def set_active(
     code: RoomCode, body: schemas.ActiveSet, _key: str = Depends(require_host_key)
 ) -> schemas.Ok:
     if not db.set_active_question(code, body.question_id):
         raise HTTPException(status_code=404, detail="Question not found")
     await publish_event(code, "question_changed")
-    return schemas.Ok()
+    response = schemas.Ok()
+    db.touch_session_activity(code)
+    return response
 
 
-@router.post("/api/sessions/{code}/questions/{qid}/responses", response_model=schemas.Ok)
+@router.post(
+    "/api/sessions/{code}/questions/{qid}/responses",
+    response_model=schemas.Ok,
+    dependencies=[Depends(reject_expired_session)],
+)
 async def submit_response(
     code: RoomCode,
     qid: int,
@@ -207,6 +249,7 @@ async def submit_response(
         )
         reject_response(result, MULTIPLE_CHOICE_DETAILS)
         await publish_event(code, "results_changed")
+        db.touch_session_activity(code)
         return schemas.Ok()
 
     if body.text is None or len(body.text) > 200:
@@ -218,6 +261,7 @@ async def submit_response(
     result = db.save_word_cloud_response(code, qid, participant_id, text)
     reject_response(result, WORD_CLOUD_DETAILS)
     await publish_event(code, "results_changed")
+    db.touch_session_activity(code)
     return schemas.Ok()
 
 
@@ -225,13 +269,20 @@ async def submit_response(
     "/api/sessions/{code}/results",
     response_model=schemas.Results,
     response_model_exclude_none=True,
+    dependencies=[Depends(reject_expired_session)],
 )
 def get_results(code: RoomCode, _key: str = Depends(require_host_key)) -> schemas.Results:
     results = [schemas.QuestionResults(**result) for result in db.get_session_results(code)]
-    return schemas.Results(results=results)
+    response = schemas.Results(results=results)
+    db.touch_session_activity(code)
+    return response
 
 
-@router.get("/api/sessions/{code}/export.csv", response_class=Response)
+@router.get(
+    "/api/sessions/{code}/export.csv",
+    response_class=Response,
+    dependencies=[Depends(reject_expired_session)],
+)
 def export_csv(code: RoomCode, _key: str = Depends(require_host_key)) -> Response:
     conn = db.connect()
     try:
@@ -258,8 +309,10 @@ def export_csv(code: RoomCode, _key: str = Depends(require_host_key)) -> Respons
          row["participant_id"], row["created_at"], "")
         for row in responses
     )
+    content = csv_export.render_csv(rows)
+    db.touch_session_activity(code)
     return Response(
-        content=csv_export.render_csv(rows),
+        content=content,
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{code}.csv"'},
     )
