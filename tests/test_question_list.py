@@ -39,12 +39,25 @@ class QuestionListTests(ApiTestCase):
             conn.commit()
         finally:
             conn.close()
+        conn = db.connect()
+        try:
+            option_id = conn.execute(
+                "SELECT id FROM options WHERE question_id = ? ORDER BY position LIMIT 1",
+                (third,),
+            ).fetchone()["id"]
+        finally:
+            conn.close()
+        self.assertEqual(
+            db.save_multiple_choice_response(
+                self.code, third, "participant-one", option_id
+            ),
+            "accepted",
+        )
+        db.save_word_cloud_response(self.code, second, "participant-two", "A thought")
         db.update_question_state(
             self.code, third, {"is_open": False, "results_visible": True}
         )
         db.set_active_question(self.code, second)
-        db.save_multiple_choice_response(self.code, third, "participant-one", 3)
-        db.save_word_cloud_response(self.code, second, "participant-two", "A thought")
 
         status, body, _ = self.request("GET", self.path, self.host)
         result = json.loads(body)

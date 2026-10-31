@@ -298,7 +298,9 @@ def get_session_state(code: str) -> dict | None:
     try:
         session = conn.execute(
             """SELECT sessions.title, questions.id AS question_id, questions.type,
-                      questions.text, questions.is_open, questions.results_visible
+                      questions.text, questions.is_open, questions.results_visible,
+                      (SELECT COUNT(*) FROM responses
+                       WHERE responses.question_id = questions.id) AS response_count
                FROM sessions
                LEFT JOIN questions
                  ON questions.id = sessions.active_question_id
@@ -319,6 +321,8 @@ def get_session_state(code: str) -> dict | None:
                 "options": options[session["question_id"]],
                 "is_open": bool(session["is_open"]),
                 "results_visible": bool(session["results_visible"]),
+                "response_count": session["response_count"],
+                "results": None,
             }
         return {"title": session["title"], "active_question": active_question}
     finally:

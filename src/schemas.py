@@ -17,20 +17,6 @@ class Option(BaseModel):
     label: str
 
 
-class ActiveQuestion(BaseModel):
-    id: int
-    type: Literal["multiple_choice", "word_cloud"]
-    text: str
-    options: list[Option]
-    is_open: bool
-    results_visible: bool
-
-
-class SessionState(BaseModel):
-    title: str
-    active_question: ActiveQuestion | None
-
-
 class QuestionListItem(BaseModel):
     id: int
     position: int
@@ -114,6 +100,33 @@ class OptionCount(BaseModel):
 class WordCount(BaseModel):
     word: str
     count: int
+
+
+class MultipleChoiceResults(BaseModel):
+    options: list[OptionCount]
+
+
+class WordCloudResults(BaseModel):
+    words: list[WordCount]
+
+
+PublicResults = MultipleChoiceResults | WordCloudResults
+
+
+class ActiveQuestion(BaseModel):
+    id: int
+    type: Literal["multiple_choice", "word_cloud"]
+    text: str
+    options: list[Option]
+    is_open: bool
+    results_visible: bool
+    response_count: int
+    results: PublicResults | None
+
+
+class SessionState(BaseModel):
+    title: str
+    active_question: ActiveQuestion | None
 
 
 class QuestionResults(BaseModel):

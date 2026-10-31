@@ -32,9 +32,10 @@ class ContractTests(ApiTestCase):
         self.assertEqual(status, 200)
         self.assertEqual(set(data), {"title", "active_question"})
         question = data["active_question"]
-        self.assertEqual(
-            set(question), {"id", "type", "text", "options", "is_open", "results_visible"}
-        )
+        self.assertEqual(set(question), {
+            "id", "type", "text", "options", "is_open", "results_visible",
+            "response_count", "results",
+        })
         self.assertEqual(set(question["options"][0]), {"id", "label"})
 
     def test_host_routes_need_bearer_key(self):
