@@ -1,31 +1,46 @@
-# Hackathon template
+# CrowdPulse
 
-A stack-agnostic starting repo for a team that works in parallel with coding agents.
-
-## Using this template each hackathon
-Clone the private template, change its remote to your new public hackathon repo, then push:
-```sh
-git remote set-url origin <new-url>
-git push -u origin main
-```
-Open the repo in your agent and say: "Run KICKOFF.md".
-
-## What is in it
-- `AGENTS.md`: rules for coding agents (`CLAUDE.md` points to it).
-- `scripts/`: the same five commands on every stack: `install`, `dev`, `lint`, `build`, `smoke`. Plus `worktree` (one git worktree per issue), `status` (what is set up and what is missing) and `check-scope` / `check-structure` / `check-secrets` (the CI gates).
-- `docs/PARALLEL.md`, `INTAKE.md`, `ORCHESTRATOR.md`, `WORKER.md`, `REVIEWER.md`: how to work in parallel with several agents, from plain-English request to reviewed PR. Tool-neutral.
-- `docs/START-HERE.md`: plain-English guide and teammate prompts. `docs/DEMO.md`: code freeze, known-good tag, rollback, submission checklist. `docs/STRUCTURE.md`: where files go.
-- `.github/`: task issue template, PR template, and one required CI check.
-- `docs/PROJECT.md`: what we are building and the demo script.
-- `docs/PROJECT.md` sets `process: light` for exactly one person and `full` otherwise. `gates: warn` is the default; `strict` is only for events of 3+ days with 3+ coders. In warn mode scope, claim and structure concerns warn and work continues; strict mode blocks them.
-- Out-of-scope ideas become GitHub issues labelled `idea`. Hackathon repos are public during the event; this template stays private.
-- Secrets: [dotenvx](https://github.com/dotenvx/dotenvx) encrypts `.env`; `.env.keys` is never committed.
-
-## Any agent, any model
-- `AGENTS.md` is the single source of rules. Codex CLI and other tools that read `AGENTS.md` pick it up directly. Claude Code reads `CLAUDE.md`, which only imports `AGENTS.md`.
-- If a tool wants its own filename, add a one-line stub that points to `AGENTS.md`. Check that tool's docs for the filename; I have not verified each one.
-- Everything else (worktrees, orchestrator, workers) runs on git, `gh` and shell scripts. `.claude/agents/` holds optional Claude Code adapters; other tools can ignore it.
+CrowdPulse is an open source live polling app for event hosts and audiences. The first version is designed to run on one computer and share through a temporary Cloudflare Quick Tunnel.
 
 ## Requirements
-- Git, the GitHub CLI (`gh`), and a POSIX shell for `scripts/` (macOS and Linux have one; on Windows use Git Bash or WSL).
-- dotenvx: `curl -sfS https://dotenvx.sh | sh`
+
+- Docker Desktop with Docker Compose
+- Git
+- Git Bash on Windows (or a POSIX shell)
+- dotenvx for `sh scripts/dev` (no secrets are needed by the scaffold)
+
+## Start locally
+
+```sh
+docker compose up --build -d
+```
+
+Open <http://localhost:3000>. The scaffold currently serves a health page; host, participant, presenter, and polling flows are the next implementation work.
+
+The `tunnel` service prints a temporary public URL in its logs:
+
+```sh
+docker compose logs -f tunnel
+```
+
+Quick Tunnel URLs change when the tunnel restarts and are intended for temporary demos. Stop the app with `docker compose down`. The named `app_data` volume is retained; do not use `docker compose down -v` if it contains responses.
+
+For local development, install Python dependencies into this repo's `.venv` with `sh scripts/install`, then run `sh scripts/dev`. Set `PORT` to choose a local port; it defaults to 3000.
+
+## Project demo
+
+1. Host creates a session with a multiple choice question and a word cloud question.
+2. Participants join on their phones and submit answers; the presenter displays live results.
+3. Host closes voting, changes questions, reveals results, and downloads a CSV.
+
+## Planned response export
+
+The target CSV has one row per response with session code, question order and type, question text, choice or free-text answer, anonymous participant ID, and UTC submission time. Text cells must be protected against spreadsheet formula injection.
+
+## Team
+
+- LimZiJing: session, question, and response APIs
+- duncanlau06: host, participant, and presenter screens
+- ewonglh: packaging, CSV export, integration, and README
+
+See [docs/PROJECT.md](docs/PROJECT.md) for the current scope, module owners, deadline status, and demo path.

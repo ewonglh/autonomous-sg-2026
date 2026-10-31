@@ -1,4 +1,4 @@
-# <Project name> – agent rules
+# CrowdPulse – agent rules
 
 Read this before changing anything. Keep it short; add to "Known gotchas" when something bites.
 What we are building, who it is for, and the demo script: `docs/PROJECT.md`.

@@ -19,9 +19,11 @@ allow .worktreeinclude
 allow .worktreelinks
 allow .env
 
-# KICKOFF: uncomment the stack's own top-level folders, e.g.
-# allow src
-# allow tests
+allow src
+allow Dockerfile
+allow compose.yaml
+allow requirements.txt
+allow .dockerignore
 
 max-lines 400
 
@@ -30,3 +32,4 @@ ignore package-lock.json
 ignore pnpm-lock.yaml
 ignore *.md
 ignore .env
+ignore *.pyc
