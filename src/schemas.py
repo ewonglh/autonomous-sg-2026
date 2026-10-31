@@ -56,6 +56,7 @@ class QuestionListItem(BaseModel):
     results_visible: bool
     response_count: int
     chart: ChartStyle | None = None
+    image_url: str | None = None
 
 
 class QuestionList(BaseModel):
@@ -163,6 +164,7 @@ class ActiveQuestion(BaseModel):
     response_count: int
     results: PublicResults | None
     chart: ChartStyle | None = None
+    image_url: str | None = None
 
 
 class SessionState(BaseModel):
@@ -202,3 +204,7 @@ class QaCreate(BaseModel):
         if not value:
             raise ValueError("Question text must not be blank")
         return value
+
+
+class ImageUpload(BaseModel):
+    data_url: str
