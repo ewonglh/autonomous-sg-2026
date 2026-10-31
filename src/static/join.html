@@ -7,7 +7,8 @@
     <link rel="stylesheet" href="/static/style.css">
   </head>
   <body>
-    <main>
+    <main class="join-shell">
+      <header class="brand"><span class="logo">CrowdPulse</span></header>
       <form id="code-form" class="card stack" hidden>
         <h1>Join a session</h1>
         <label for="code-input" class="muted">Enter the room code on the screen</label>
@@ -16,9 +17,9 @@
         <p id="code-status" class="error" aria-live="polite"></p>
       </form>
       <div id="session" hidden>
-        <div class="row" style="justify-content: space-between">
+        <div class="session-head">
           <h1 id="title">CrowdPulse</h1>
-          <button id="leave" type="button">Leave</button>
+          <button id="leave" class="ghost" type="button">Leave</button>
         </div>
         <p id="timer" class="timer" role="timer" aria-live="off" hidden></p>
         <section id="activity" class="card" aria-live="polite"></section>
