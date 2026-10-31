@@ -1,6 +1,7 @@
 import os
 import sqlite3
 from datetime import datetime, timezone
+from typing import Literal
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -39,6 +40,10 @@ CREATE TABLE IF NOT EXISTS responses (
 CREATE UNIQUE INDEX IF NOT EXISTS one_vote_per_participant
     ON responses (question_id, participant_id) WHERE option_id IS NOT NULL;
 """
+
+ResponseSubmission = Literal[
+    "accepted", "not_found", "wrong_type", "closed", "invalid_option", "duplicate"
+]
 
 
 def db_path() -> str:
@@ -120,6 +125,64 @@ def create_question(
         )
         conn.commit()
         return question_id
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def save_multiple_choice_response(
+    code: str, question_id: int, participant_id: str, option_id: int
+) -> ResponseSubmission:
+    conn = connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        question = conn.execute(
+            """SELECT q.type, q.is_open
+               FROM questions q
+               JOIN sessions s ON s.id = q.session_id
+               WHERE s.code = ? AND q.id = ?""",
+            (code, question_id),
+        ).fetchone()
+        if question is None:
+            return "not_found"
+        if question["type"] != "multiple_choice":
+            return "wrong_type"
+        if not question["is_open"]:
+            return "closed"
+
+        option = conn.execute(
+            "SELECT 1 FROM options WHERE id = ? AND question_id = ?",
+            (option_id, question_id),
+        ).fetchone()
+        if option is None:
+            return "invalid_option"
+
+        try:
+            conn.execute(
+                """INSERT INTO responses
+                   (question_id, participant_id, option_id, created_at)
+                   VALUES (?, ?, ?, ?)""",
+                (
+                    question_id,
+                    participant_id,
+                    option_id,
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            )
+            conn.commit()
+            return "accepted"
+        except sqlite3.IntegrityError:
+            conn.rollback()
+            duplicate = conn.execute(
+                """SELECT 1 FROM responses
+                   WHERE question_id = ? AND participant_id = ? AND option_id IS NOT NULL""",
+                (question_id, participant_id),
+            ).fetchone()
+            if duplicate is not None:
+                return "duplicate"
+            raise
     except Exception:
         conn.rollback()
         raise

@@ -1,5 +1,6 @@
 """HTTP routes for CrowdPulse sessions and polling."""
 import secrets
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, WebSocket
 from fastapi.responses import Response
@@ -64,6 +65,37 @@ def submit_response(
     body: schemas.ResponseCreate,
     x_participant_id: str = Header(),
 ) -> schemas.Ok:
+    if body.option_id is None or body.text is not None:
+        raise HTTPException(
+            status_code=422,
+            detail="Multiple-choice responses need an option_id only",
+        )
+    try:
+        participant_id = str(UUID(x_participant_id))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="X-Participant-Id must be a UUID",
+        ) from exc
+
+    result = db.save_multiple_choice_response(
+        code, qid, participant_id, body.option_id
+    )
+    if result == "not_found":
+        raise HTTPException(status_code=404, detail="Session or question not found")
+    if result == "wrong_type":
+        raise HTTPException(
+            status_code=422,
+            detail="Question does not accept multiple-choice responses",
+        )
+    if result == "closed":
+        raise HTTPException(status_code=409, detail="Question is closed")
+    if result == "invalid_option":
+        raise HTTPException(
+            status_code=422, detail="Option does not belong to this question"
+        )
+    if result == "duplicate":
+        raise HTTPException(status_code=409, detail="Participant has already responded")
     return schemas.Ok()
 
 
