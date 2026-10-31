@@ -47,6 +47,7 @@ function start() {
   };
   $("start").onclick = startPresentation;
   $("export").onclick = exportCsv;
+  enableDragReorder($("questions"));
   $("add").addEventListener("submit", addSlide);
   $("q-type").addEventListener("change", typeChanged);
   $("q-time").replaceChildren(...timeOptions(0));
@@ -152,10 +153,10 @@ function timeOptions(current) {
   return TIME_LIMITS.map((s) => el("option", { value: s, selected: s === (current || 0) }, limitLabel(s)));
 }
 
-// Moves a slide up (-1) or down (+1) and saves the new order.
-async function move(index, delta) {
+// Moves the slide at position `from` to position `to` (both 0-based) and saves the new order.
+async function moveTo(from, to) {
   const ids = slides.map((q) => q.id);
-  [ids[index], ids[index + delta]] = [ids[index + delta], ids[index]];
+  ids.splice(to, 0, ids.splice(from, 1)[0]);
   try {
     await request("PUT", `${sessionPath(code)}/questions/order`, { body: { question_ids: ids }, hostKey });
   } catch (err) {
@@ -163,6 +164,92 @@ async function move(index, delta) {
   }
   saveLocal(code, localSlides(code).map((q) => ({ ...q, position: ids.indexOf(q.id) + 1 })));
   refresh();
+}
+
+// Press and hold a slide (about half a second), then drag it to its place in the queue.
+// Works with a mouse or a finger. A quick click or tap, or pressing a button, behaves as usual.
+const HOLD_MS = 450;
+function enableDragReorder(list) {
+  list.addEventListener("pointerdown", (event) => {
+    const item = event.target.closest("li[data-index]");
+    if (!item || (event.pointerType === "mouse" && event.button !== 0)) return;
+    if (event.target.closest("button, select, input, textarea, label, a")) return;
+    const from = Number(item.dataset.index);
+    const startY = event.clientY;
+    const startScroll = window.scrollY;
+    let lastY = startY;
+    let to = from;
+    let state = "waiting"; // waiting -> dragging -> done
+    const items = () => [...list.querySelectorAll("li[data-index]")];
+    const others = () => items().filter((li) => li !== item);
+    const stopScroll = (e) => e.preventDefault();
+
+    // Where the slide would land: before the first other slide whose middle is below the pointer.
+    const markDrop = () => {
+      items().forEach((li) => li.classList.remove("drop-above", "drop-below"));
+      const rest = others();
+      const found = rest.findIndex((li) => lastY < li.getBoundingClientRect().top + li.offsetHeight / 2);
+      to = found === -1 ? rest.length : found;
+      if (to === from) return;
+      if (to < rest.length) rest[to].classList.add("drop-above");
+      else rest[rest.length - 1].classList.add("drop-below");
+    };
+    // Moves the slide with the pointer and shows where it would land.
+    const place = () => {
+      item.style.transform = `translateY(${lastY - startY + (window.scrollY - startScroll)}px)`;
+      markDrop();
+    };
+    const follow = () => {
+      if (state !== "dragging") return;
+      // Keep the page scrolling while the slide is held near its top or bottom edge.
+      if (lastY < 70) window.scrollBy(0, -12);
+      else if (lastY > window.innerHeight - 70) window.scrollBy(0, 12);
+      place();
+      requestAnimationFrame(follow);
+    };
+    const begin = () => {
+      state = "dragging";
+      item.classList.add("dragging");
+      document.body.classList.add("reordering");
+      try {
+        item.setPointerCapture(event.pointerId);
+      } catch {
+        /* pointer already gone */
+      }
+      document.addEventListener("touchmove", stopScroll, { passive: false });
+      follow();
+    };
+    const move = (e) => {
+      lastY = e.clientY;
+      if (state === "waiting" && Math.abs(e.clientY - startY) > 8) finish(false); // it is a scroll, not a drag
+      else if (state === "dragging") place();
+    };
+    const up = () => finish(true);
+    const cancel = () => finish(false);
+    const blockMenu = (e) => e.preventDefault(); // a long press on a phone would open a menu
+    const timer = setTimeout(begin, HOLD_MS);
+
+    function finish(drop) {
+      clearTimeout(timer);
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", up);
+      document.removeEventListener("pointercancel", cancel);
+      document.removeEventListener("touchmove", stopScroll);
+      document.removeEventListener("contextmenu", blockMenu);
+      if (state === "dragging") {
+        item.classList.remove("dragging");
+        item.style.transform = "";
+        items().forEach((li) => li.classList.remove("drop-above", "drop-below"));
+        document.body.classList.remove("reordering");
+        if (drop && to !== from) moveTo(from, to);
+      }
+      state = "done";
+    }
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", up);
+    document.addEventListener("pointercancel", cancel);
+    document.addEventListener("contextmenu", blockMenu);
+  });
 }
 
 function slideItem(q, index) {
@@ -179,7 +266,7 @@ function slideItem(q, index) {
       : null;
   return el(
     "li",
-    { class: q.id === activeId ? "active" : "" },
+    { class: q.id === activeId ? "active" : "", "data-index": String(index) },
     el(
       "div",
       { class: "row" },
@@ -192,8 +279,8 @@ function slideItem(q, index) {
     el(
       "div",
       { class: "row", style: "margin-top:8px" },
-      el("button", { "aria-label": "Move up", title: "Move up", disabled: index === 0, onclick: () => move(index, -1) }, "↑"),
-      el("button", { "aria-label": "Move down", title: "Move down", disabled: index === slides.length - 1, onclick: () => move(index, 1) }, "↓"),
+      el("button", { "aria-label": "Move up", title: "Move up", disabled: index === 0, onclick: () => moveTo(index, index - 1) }, "↑"),
+      el("button", { "aria-label": "Move down", title: "Move down", disabled: index === slides.length - 1, onclick: () => moveTo(index, index + 1) }, "↓"),
       chartPicker,
       el("select", { "aria-label": "Time limit", onchange: (event) => patchSlide(q.id, { time_limit: Number(event.target.value) || null }) }, timeOptions(q.time_limit)),
       el("label", { class: "button" }, picture ? "Change picture" : "Add picture", pictureInput),

@@ -102,6 +102,12 @@ input, textarea, select {
 .qlist { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
 .qlist li { border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
 .qlist li.active { border-color: var(--accent); }
+.qlist li { touch-action: pan-y; -webkit-touch-callout: none; }
+.qlist li .slide-text, .qlist li .slide-num { cursor: grab; user-select: none; -webkit-user-select: none; }
+.qlist li.dragging { position: relative; z-index: 5; background: var(--surface); box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28); opacity: 0.92; cursor: grabbing; }
+.qlist li.drop-above { box-shadow: 0 -5px 0 -1px var(--accent); }
+.qlist li.drop-below { box-shadow: 0 5px 0 -1px var(--accent); }
+body.reordering, body.reordering * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
 .badge { font-size: 0.8rem; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--border); color: var(--muted); }
 .badge.on { border-color: var(--accent); color: var(--accent); }
 .slide-num { min-width: 28px; height: 28px; display: inline-grid; place-items: center; border-radius: 50%; background: var(--bg); font-weight: 700; font-variant-numeric: tabular-nums; }
