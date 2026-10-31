@@ -180,6 +180,23 @@ class QuestionStateRouteTests(ApiTestCase):
         _, body, _ = self.request("GET", path)
         self.assertEqual(json.loads(body)["active_question"]["id"], question_id)
 
+    def test_public_state_includes_response_count_and_hidden_results(self):
+        question_id = self.create_question()
+        self.request(
+            "POST", f"/api/sessions/{self.code}/active", self.host,
+            {"question_id": question_id},
+        )
+        db.save_multiple_choice_response(
+            self.code, question_id, "participant-one", 1
+        )
+
+        status, body, _ = self.request("GET", f"/api/sessions/{self.code}/state")
+        active = json.loads(body)["active_question"]
+
+        self.assertEqual(status, 200)
+        self.assertEqual(active["response_count"], 1)
+        self.assertIsNone(active["results"])
+
     def test_host_routes_reject_question_from_another_session(self):
         self.create_question()
         other_session = self.create_session()
