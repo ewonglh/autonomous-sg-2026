@@ -94,6 +94,7 @@ function start(code) {
   $("code-form").hidden = true;
   $("session").hidden = false;
   let lastKey = "";
+  let lastId;
   let qaList = null;
   let qaId = null;
   onTimerDone = () => refresh();
@@ -120,14 +121,16 @@ function start(code) {
     const key = !q ? "none" : isQa ? `qa:${q.id}:${q.is_open}` : `${q.id}:${q.is_open}:${sent(code, q.id).length}`;
     if (key !== lastKey) {
       lastKey = key;
+      const moved = (q ? q.id : null) !== lastId;
+      lastId = q ? q.id : null;
       if (isQa) {
         qaList = el("div");
         qaId = q.id;
         const ask = q.is_open ? renderAskForm(code, q.id, () => refresh("qa_changed")) : el("p", { class: "muted" }, "New questions are closed. You can still upvote.");
-        $("activity").replaceChildren(el("h2", {}, q.text), ask, qaList);
+        showActivity([el("h2", {}, q.text), ask, qaList], moved);
       } else {
         qaList = null;
-        $("activity").replaceChildren(renderQuestion(code, q, () => { lastKey = ""; refresh(); }));
+        showActivity([renderQuestion(code, q, () => { lastKey = ""; refresh(); })], moved);
       }
     }
     if (qaList && type !== "question_changed") refreshQa();
@@ -145,6 +148,27 @@ function start(code) {
   }
 
   stopUpdates = subscribe(code, refresh);
+}
+
+// Swaps what the phone shows. On a new slide the old one slides out, then the new one slides in.
+// A newer swap cancels a pending one, so the screen always ends on the latest slide.
+let pendingSwap = null;
+function showActivity(nodes, moved) {
+  const box = $("activity");
+  clearTimeout(pendingSwap);
+  // Reading offsetWidth makes the browser notice the class change, so the animation restarts.
+  const play = (name) => {
+    box.classList.remove("leaving", "entering");
+    void box.offsetWidth;
+    if (name) box.classList.add(name);
+  };
+  const swap = () => {
+    box.replaceChildren(...nodes);
+    play(moved ? "entering" : null);
+  };
+  if (!moved || !box.childElementCount || matchMedia("(prefers-reduced-motion: reduce)").matches) return swap();
+  play("leaving");
+  pendingSwap = setTimeout(swap, 220);
 }
 
 function renderQuestion(code, q, onDone) {
