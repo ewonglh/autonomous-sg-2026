@@ -60,7 +60,7 @@ class WordCloudResponseTests(ApiTestCase):
             "POST", self.response_path, self.participant, {"text": "Fourth"}
         )
 
-        self.assertEqual(status, 409)
+        self.assertEqual(status, 429)
         self.assertEqual(len(self.stored_responses()), 3)
 
     def test_rejects_blank_and_overlong_text_without_storing(self):
@@ -101,7 +101,7 @@ class WordCloudResponseTests(ApiTestCase):
         status, _, _ = self.request(
             "POST", self.response_path, self.participant, {"text": "Closed"}
         )
-        self.assertEqual(status, 409)
+        self.assertEqual(status, 403)
 
         status, body, _ = self.request(
             "POST",

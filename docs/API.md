@@ -25,7 +25,18 @@ All JSON lives under `/api`. Any change to this contract is agreed on issue #4 f
 Notes:
 
 - `type` is `multiple_choice` or `word_cloud`. `options` is used for multiple choice only.
-- Responses: a repeat vote for multiple choice returns 409. Word cloud allows up to 3 responses per participant.
+- Responses: a repeat vote for multiple choice is rejected (`already_responded`). Word cloud allows up to 3 responses per participant.
+- Rejected answers on `POST .../responses` reply `{"detail": "<readable text>", "code": "<code>"}`. Clients should read `code` first and fall back to `detail`:
+
+  | Situation | Status | `code` |
+  | --- | --- | --- |
+  | This person already voted | 409 | `already_responded` |
+  | The slide is closed | 403 | `closed` |
+  | Word limit reached | 429 | `limit_reached` |
+  | Wrong kind of answer for the slide | 422 | `wrong_type` |
+  | Slide not found in this session | 404 | `not_found` |
+  | Option does not belong to the slide | 422 | `invalid_option` |
+
 - Slide limits (422 if broken): question text is trimmed, 1 to 300 characters; poll options are trimmed, 2 to 10 of them, 1 to 100 characters each, no duplicates ignoring case.
 - Host routes return 401 without a bearer key.
 - After a WebSocket message, clients refetch `state`.

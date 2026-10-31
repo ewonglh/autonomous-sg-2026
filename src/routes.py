@@ -7,6 +7,7 @@ from fastapi.responses import Response
 
 from . import csv_export, db, schemas
 from .auth import hash_host_key, require_host_key
+from .errors import ApiError
 from .limits import RateLimiter
 
 router = APIRouter()
@@ -23,6 +24,33 @@ def enforce_rate_limit(key: tuple[str, ...], limit: int) -> None:
             detail="Rate limit exceeded",
             headers={"Retry-After": str(retry_after)},
         )
+
+
+REJECTED_RESPONSES = {
+    "not_found": (404, "Question not found in session", "not_found"),
+    "closed": (403, "Question is closed", "closed"),
+    "limit_reached": (429, "Response limit reached", "limit_reached"),
+    "duplicate": (409, "Participant has already responded", "already_responded"),
+    "wrong_type": (422, "Question does not accept this kind of response", "wrong_type"),
+    "invalid_option": (422, "Option does not belong to this question", "invalid_option"),
+}
+
+
+def reject_response(result: str, details: dict[str, str] | None = None) -> None:
+    """Raise the error for a refused response; do nothing if it was saved.
+
+    `details` replaces the default readable text for a result (per answer type).
+    """
+    if result in REJECTED_RESPONSES:
+        status, detail, code = REJECTED_RESPONSES[result]
+        raise ApiError(status, (details or {}).get(result, detail), code)
+
+
+MULTIPLE_CHOICE_DETAILS = {
+    "not_found": "Session or question not found",
+    "wrong_type": "Question does not accept multiple-choice responses",
+}
+WORD_CLOUD_DETAILS = {"wrong_type": "Question does not accept text responses"}
 
 
 def parse_participant_id(value: str) -> str:
@@ -103,23 +131,7 @@ def submit_response(
         result = db.save_multiple_choice_response(
             code, qid, participant_id, body.option_id
         )
-        if result == "not_found":
-            raise HTTPException(status_code=404, detail="Session or question not found")
-        if result == "wrong_type":
-            raise HTTPException(
-                status_code=422,
-                detail="Question does not accept multiple-choice responses",
-            )
-        if result == "closed":
-            raise HTTPException(status_code=409, detail="Question is closed")
-        if result == "invalid_option":
-            raise HTTPException(
-                status_code=422, detail="Option does not belong to this question"
-            )
-        if result == "duplicate":
-            raise HTTPException(
-                status_code=409, detail="Participant has already responded"
-            )
+        reject_response(result, MULTIPLE_CHOICE_DETAILS)
         return schemas.Ok()
 
     if body.text is None or len(body.text) > 200:
@@ -128,17 +140,9 @@ def submit_response(
     if not text:
         raise HTTPException(status_code=422, detail="Response text must not be blank")
 
-    result = db.save_word_cloud_response(code, qid, participant_id, text)
-    if result == "not_found":
-        raise HTTPException(status_code=404, detail="Question not found in session")
-    if result == "wrong_type":
-        raise HTTPException(
-            status_code=422, detail="Question does not accept text responses"
-        )
-    if result == "closed":
-        raise HTTPException(status_code=409, detail="Question is closed")
-    if result == "limit_reached":
-        raise HTTPException(status_code=409, detail="Response limit reached")
+    reject_response(
+        db.save_word_cloud_response(code, qid, participant_id, text), WORD_CLOUD_DETAILS
+    )
     return schemas.Ok()
 
 
