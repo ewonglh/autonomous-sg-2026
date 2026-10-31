@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Join · CrowdPulse</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <main>
+      <form id="code-form" class="card stack" hidden>
+        <h1>Join a session</h1>
+        <label for="code-input" class="muted">Enter the room code on the screen</label>
+        <input id="code-input" class="code-input" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="12" required>
+        <button class="primary" type="submit">Join</button>
+        <p id="code-status" class="error" aria-live="polite"></p>
+      </form>
+      <div id="session" hidden>
+        <div class="row" style="justify-content: space-between">
+          <h1 id="title">CrowdPulse</h1>
+          <button id="leave" type="button">Leave</button>
+        </div>
+        <p id="timer" class="timer" role="timer" aria-live="off" hidden></p>
+        <section id="activity" class="card" aria-live="polite"></section>
+      </div>
+    </main>
+    <script type="module" src="/static/join.js"></script>
+  </body>
+</html>

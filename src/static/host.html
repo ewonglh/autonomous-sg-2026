@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="no-referrer">
+    <title>Host · CrowdPulse</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <main class="wide">
+      <form id="create" class="card stack" hidden>
+        <h1>Start a session</h1>
+        <label for="title-input" class="muted">Session title</label>
+        <input id="title-input" maxlength="120" placeholder="Town hall">
+        <button class="primary" type="submit">Create session</button>
+        <p id="create-status" class="error" aria-live="polite"></p>
+      </form>
+
+      <p id="no-key" class="card error" hidden>This host link is missing its key. Open the private host link you got when you created the session.</p>
+
+      <div id="console" hidden>
+        <h1 id="title">Session</h1>
+        <p class="muted">Keep this page's link private: it is your host key. Bookmark it to come back.</p>
+
+        <section class="card stack">
+          <h2>Share</h2>
+          <div class="row">
+            <input id="join-link" readonly aria-label="Participant link">
+            <button id="copy-join">Copy join link</button>
+            <button id="open-present">Open presenter</button>
+            <button id="export">Export CSV</button>
+          </div>
+          <p class="muted">Room code: <strong id="code"></strong></p>
+          <p id="share-status" aria-live="polite"></p>
+        </section>
+
+        <section class="card stack">
+          <div class="row" style="justify-content: space-between">
+            <div class="row">
+              <h2 id="now-showing">Nothing on screen yet</h2>
+              <p id="timer" class="timer" role="timer" aria-live="off" hidden></p>
+            </div>
+            <div class="row">
+              <button id="prev" type="button">◀ Previous</button>
+              <button id="next" class="primary" type="button">Next ▶</button>
+            </div>
+          </div>
+          <div id="live"></div>
+        </section>
+
+        <section class="card">
+          <h2>Slides</h2>
+          <ol id="questions" class="qlist"></ol>
+        </section>
+
+        <section class="card">
+          <h2>Add a slide</h2>
+          <form id="add" class="stack">
+            <label for="q-type" class="muted">Type</label>
+            <select id="q-type">
+              <option value="multiple_choice">Poll</option>
+              <option value="word_cloud">Word cloud</option>
+              <option value="qa">Q&amp;A</option>
+            </select>
+            <label for="q-text" class="muted" id="q-text-label">Question</label>
+            <input id="q-text" maxlength="300" required placeholder="Which talk should we extend?">
+            <label for="q-time" class="muted">Time limit (voting closes and results show when it ends)</label>
+            <select id="q-time"></select>
+            <div id="poll-fields" class="stack">
+              <label for="q-options" class="muted">Options, one per line</label>
+              <textarea id="q-options" rows="4" placeholder="Design systems&#10;Shipping faster"></textarea>
+              <label for="q-chart" class="muted">Show results as</label>
+              <select id="q-chart">
+                <option value="bar">Bar chart</option>
+                <option value="donut">Donut chart</option>
+              </select>
+            </div>
+            <button class="primary" type="submit">Add slide</button>
+            <p id="add-status" aria-live="polite"></p>
+          </form>
+        </section>
+      </div>
+    </main>
+    <script type="module" src="/static/host.js"></script>
+  </body>
+</html>
