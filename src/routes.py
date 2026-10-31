@@ -2,7 +2,14 @@
 import secrets
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, WebSocket
+from fastapi import (
+    APIRouter,
+    Depends,
+    Header,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import Response
 
 from . import csv_export, db, schemas
@@ -14,6 +21,7 @@ router = APIRouter()
 SESSION_CREATION_LIMIT = 5
 RESPONSE_SUBMISSION_LIMIT = 10
 rate_limiter = RateLimiter()
+live_connections: dict[str, set[WebSocket]] = {}
 
 
 def enforce_rate_limit(key: tuple[str, ...], limit: int) -> None:
@@ -53,6 +61,17 @@ MULTIPLE_CHOICE_DETAILS = {
 WORD_CLOUD_DETAILS = {"wrong_type": "Question does not accept text responses"}
 
 
+async def publish_event(code: str, event: str) -> None:
+    connections = live_connections.get(code, set())
+    for websocket in tuple(connections):
+        try:
+            await websocket.send_json({"type": event})
+        except (RuntimeError, WebSocketDisconnect):
+            connections.discard(websocket)
+    if not connections:
+        live_connections.pop(code, None)
+
+
 def parse_participant_id(value: str) -> str:
     try:
         return str(UUID(value))
@@ -64,12 +83,15 @@ def parse_participant_id(value: str) -> str:
 
 
 @router.post("/api/sessions", response_model=schemas.SessionCreated)
-def create_session() -> schemas.SessionCreated:
+def create_session(
+    body: schemas.SessionCreate | None = None,
+) -> schemas.SessionCreated:
     enforce_rate_limit(("session_creation",), SESSION_CREATION_LIMIT)
     host_key = secrets.token_urlsafe(32)
+    title = body.title if body is not None else "Untitled session"
     for _ in range(5):
         code = secrets.token_hex(4).upper()
-        if db.create_session(code, hash_host_key(host_key)):
+        if db.create_session(code, hash_host_key(host_key), title):
             return schemas.SessionCreated(code=code, host_key=host_key)
     raise HTTPException(status_code=503, detail="Could not create a unique session")
 
@@ -79,40 +101,72 @@ def get_state(code: str) -> schemas.SessionState:
     state = db.get_session_state(code)
     if state is None:
         raise HTTPException(status_code=404, detail="Session not found")
+    active_question = state["active_question"]
+    if active_question and active_question["results_visible"]:
+        result = next(
+            (
+                item
+                for item in db.get_session_results(code)
+                if item["question_id"] == active_question["id"]
+            ),
+            None,
+        )
+        if result is not None:
+            active_question["results"] = (
+                {"options": result["options"]}
+                if result["type"] == "multiple_choice"
+                else {"words": result["words"]}
+            )
     return schemas.SessionState(**state)
 
 
+@router.get(
+    "/api/sessions/{code}/questions", response_model=schemas.QuestionList
+)
+def get_questions(
+    code: str, _key: str = Depends(require_host_key)
+) -> schemas.QuestionList:
+    questions = db.get_session_questions(code)
+    if questions is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return schemas.QuestionList(**questions)
+
+
 @router.post("/api/sessions/{code}/questions", response_model=schemas.QuestionCreated)
-def create_question(
+async def create_question(
     code: str, body: schemas.QuestionCreate, _key: str = Depends(require_host_key)
 ) -> schemas.QuestionCreated:
     question_id = db.create_question(code, body.type, body.text, body.options)
     if question_id is None:
         raise HTTPException(status_code=404, detail="Session not found")
+    await publish_event(code, "question_changed")
     return schemas.QuestionCreated(id=question_id)
 
 
 @router.patch("/api/sessions/{code}/questions/{qid}", response_model=schemas.Ok)
-def update_question(
+async def update_question(
     code: str, qid: int, body: schemas.QuestionUpdate, _key: str = Depends(require_host_key)
 ) -> schemas.Ok:
     changes = body.model_dump(exclude_unset=True)
     if changes and not db.update_question_state(code, qid, changes):
         raise HTTPException(status_code=404, detail="Question not found")
+    if changes:
+        await publish_event(code, "question_changed")
     return schemas.Ok()
 
 
 @router.post("/api/sessions/{code}/active", response_model=schemas.Ok)
-def set_active(
+async def set_active(
     code: str, body: schemas.ActiveSet, _key: str = Depends(require_host_key)
 ) -> schemas.Ok:
     if not db.set_active_question(code, body.question_id):
         raise HTTPException(status_code=404, detail="Question not found")
+    await publish_event(code, "question_changed")
     return schemas.Ok()
 
 
 @router.post("/api/sessions/{code}/questions/{qid}/responses", response_model=schemas.Ok)
-def submit_response(
+async def submit_response(
     code: str,
     qid: int,
     body: schemas.ResponseCreate,
@@ -132,6 +186,7 @@ def submit_response(
             code, qid, participant_id, body.option_id
         )
         reject_response(result, MULTIPLE_CHOICE_DETAILS)
+        await publish_event(code, "results_changed")
         return schemas.Ok()
 
     if body.text is None or len(body.text) > 200:
@@ -140,9 +195,9 @@ def submit_response(
     if not text:
         raise HTTPException(status_code=422, detail="Response text must not be blank")
 
-    reject_response(
-        db.save_word_cloud_response(code, qid, participant_id, text), WORD_CLOUD_DETAILS
-    )
+    result = db.save_word_cloud_response(code, qid, participant_id, text)
+    reject_response(result, WORD_CLOUD_DETAILS)
+    await publish_event(code, "results_changed")
     return schemas.Ok()
 
 
@@ -192,7 +247,15 @@ def export_csv(code: str, _key: str = Depends(require_host_key)) -> Response:
 
 @router.websocket("/ws/{code}")
 async def live_updates(websocket: WebSocket, code: str) -> None:
-    # Stub: sends one example message, then closes. Real version broadcasts changes.
     await websocket.accept()
-    await websocket.send_json({"type": "question_changed"})
-    await websocket.close()
+    connections = live_connections.setdefault(code, set())
+    connections.add(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        connections.discard(websocket)
+        if not connections:
+            live_connections.pop(code, None)

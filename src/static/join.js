@@ -1,6 +1,6 @@
 // Participant screen. Step 1: type the room code. Step 2: you see exactly what the presenter
 // screen shows right now (a poll, a word cloud or a Q&A slide) and can answer it. One thing at a time.
-import { codeFromPath, el, request, sessionPath, subscribe } from "./api.js";
+import { codeFromPath, el, rejection, request, sessionPath, subscribe } from "./api.js";
 import { loadQa, renderAskForm, renderQaList, toggleUpvote } from "./qa.js";
 import { Countdown, secondsLeftOf } from "./timer.js";
 
@@ -150,9 +150,11 @@ function renderQuestion(code, q, onDone) {
       remember(code, q.id, remembered);
       onDone();
     } catch (err) {
-      if (err.status === 409) { remember(code, q.id, remembered); onDone(); return; }
+      const why = rejection(err);
+      // Only "you already answered" counts as sent. A closed slide or a reached limit does not.
+      if (why === "already_responded") { remember(code, q.id, remembered); onDone(); return; }
       status.className = "error";
-      status.textContent = err.message;
+      status.textContent = { closed: "Voting just closed. Watch the screen for the results.", limit_reached: "You've sent the most answers allowed.", rate_limited: "That was too fast. Wait a moment and try again." }[why] || err.message;
     }
   };
 
