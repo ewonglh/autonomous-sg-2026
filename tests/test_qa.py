@@ -1,7 +1,9 @@
 import json
+import sqlite3
 import uuid
 from unittest import mock
 
+from src import db
 from support import ApiTestCase
 
 
@@ -117,3 +119,16 @@ class QaTests(ApiTestCase):
             self.assertEqual(self.ask("", self.bob)[0], 422)
         code = self.session["code"]
         self.assertEqual(publish.await_args_list, [mock.call(code, "qa_changed")] * 3)
+
+    def test_expired_session_hides_qa_and_ordering(self):
+        with sqlite3.connect(db.db_path()) as conn:
+            conn.execute(
+                "UPDATE sessions SET last_active_at = '2000-01-01T00:00:00+00:00'"
+            )
+        self.assertEqual(self.request("GET", self.qa_path())[0], 404)
+        self.assertEqual(self.ask()[0], 404)
+        status, _, _ = self.request(
+            "PUT", f"{self.base}/questions/order", self.host,
+            {"question_ids": [self.slide]},
+        )
+        self.assertEqual(status, 404)

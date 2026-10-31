@@ -1,6 +1,6 @@
 import os
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 SCHEMA = """
@@ -54,6 +54,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS one_vote_per_participant
     ON responses (question_id, participant_id) WHERE option_id IS NOT NULL;
 """
 
+SESSION_IDLE_TIMEOUT = timedelta(hours=24)
+
 ResponseSubmission = Literal[
     "accepted", "not_found", "wrong_type", "closed", "invalid_option", "duplicate"
 ]
@@ -70,10 +72,45 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def has_session_expired(last_active_at: str, now: datetime | None = None) -> bool:
+    if last_active_at.endswith("Z"):
+        last_active_at = f"{last_active_at[:-1]}+00:00"
+    last_active = datetime.fromisoformat(last_active_at)
+    current_time = utc_now() if now is None else now
+    return current_time - last_active >= SESSION_IDLE_TIMEOUT
+
+
+def session_is_expired(code: str) -> bool:
+    conn = connect()
+    try:
+        session = conn.execute(
+            "SELECT last_active_at FROM sessions WHERE code = ?", (code,)
+        ).fetchone()
+        return session is not None and has_session_expired(session["last_active_at"])
+    finally:
+        conn.close()
+
+
+def touch_session_activity(code: str) -> None:
+    conn = connect()
+    try:
+        conn.execute(
+            "UPDATE sessions SET last_active_at = ? WHERE code = ?",
+            (utc_now().isoformat(), code),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def create_session(
     code: str, host_key_hash: str, title: str = "Untitled session"
 ) -> bool:
-    now = datetime.now(timezone.utc).isoformat()
+    now = utc_now().isoformat()
     conn = connect()
     try:
         try:

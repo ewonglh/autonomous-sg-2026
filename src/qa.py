@@ -1,15 +1,19 @@
 """HTTP routes for Q&A slides: audience questions and upvotes."""
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 
-from . import qa_store, schemas
+from . import db, qa_store, schemas
 from .routes import (
     RESPONSE_SUBMISSION_LIMIT,
     enforce_rate_limit,
     parse_participant_id,
     publish_event,
+    reject_expired_session,
 )
 
-router = APIRouter(prefix="/api/sessions/{code}/questions/{qid}/qa")
+router = APIRouter(
+    prefix="/api/sessions/{code}/questions/{qid}/qa",
+    dependencies=[Depends(reject_expired_session)],
+)
 NOT_FOUND = "Q&A slide not found"
 
 
@@ -27,6 +31,7 @@ def list_items(
     items = qa_store.list_items(code, qid, participant_id)
     if items is None:
         raise HTTPException(status_code=404, detail=NOT_FOUND)
+    db.touch_session_activity(code)
     return schemas.QaList(items=items)
 
 
@@ -40,6 +45,7 @@ async def add_item(
     if result == "closed":
         raise HTTPException(status_code=400, detail="Q&A is closed for new questions")
     await publish_event(code, "qa_changed")
+    db.touch_session_activity(code)
     return schemas.QuestionCreated(id=result)
 
 
@@ -53,6 +59,7 @@ async def upvote(
     if result == "duplicate":
         raise HTTPException(status_code=409, detail="Already upvoted")
     await publish_event(code, "qa_changed")
+    db.touch_session_activity(code)
     return schemas.Ok()
 
 
@@ -64,4 +71,5 @@ async def remove_upvote(
     if not qa_store.remove_upvote(code, qid, item_id, participant_id):
         raise HTTPException(status_code=404, detail="Q&A question not found")
     await publish_event(code, "qa_changed")
+    db.touch_session_activity(code)
     return schemas.Ok()

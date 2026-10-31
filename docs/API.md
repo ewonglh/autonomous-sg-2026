@@ -38,6 +38,7 @@ Notes:
 - A `qa` slide's `response_count` is the number of audience questions on it.
 - The WebSocket also sends `{"type": "qa_changed"}` after a new Q&A question, an upvote or a removed upvote.
 - Responses: a repeat vote for multiple choice returns 409. Word cloud allows up to 3 responses per participant.
+- Slide limits (422 if broken): question text is trimmed, 1 to 300 characters; poll options are trimmed, 2 to 10 of them, 1 to 100 characters each, no duplicates ignoring case.
 - Host routes return 401 without a bearer key.
 - After a WebSocket message, clients refetch `state`.
 - The `{ok}` and `{id}` replies for write routes are the skeleton's choice; they were not specified in the issue.
