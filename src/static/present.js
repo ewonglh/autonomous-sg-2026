@@ -43,16 +43,16 @@ document.addEventListener("keydown", async (event) => {
   }
 });
 
-// "3 / 6" in the corner, only on the presenter's own screen.
-async function showSlideCount() {
+// The slide's number ("3") in the top-right corner, only on the presenter's own screen.
+async function showSlideNumber() {
   if (!hostKey) return;
   try {
     const { list, active } = await loadSlides(code, hostKey);
     const index = list.findIndex((q) => q.id === active);
-    $("slide-count").hidden = index === -1;
-    $("slide-count").textContent = `${index + 1} / ${list.length}`;
+    $("slide-number").hidden = index === -1;
+    $("slide-number").textContent = String(index + 1);
   } catch {
-    $("slide-count").hidden = true;
+    $("slide-number").hidden = true;
   }
 }
 
@@ -87,7 +87,7 @@ async function refresh() {
   }
   document.title = `${state.title || "Present"} · CrowdPulse`;
   const q = state.active_question;
-  showSlideCount();
+  showSlideNumber();
   countdown.set(secondsLeftOf(q));
   showImage($("slide-image"), imageOf(code, q));
   if (!q) {

@@ -153,5 +153,7 @@ select { width: auto; }
 .present .bar-track { height: clamp(22px, 3.5vw, 44px); }
 .present .legend { font-size: clamp(1rem, 2vw, 1.4rem); }
 .present .qa { font-size: clamp(1rem, 2vw, 1.5rem); }
+.top-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.slide-number { margin: 0; font-size: clamp(1.6rem, 4vw, 3rem); font-weight: 700; line-height: 1; color: var(--muted); font-variant-numeric: tabular-nums; }
 .join-hint { font-size: clamp(1rem, 2vw, 1.4rem); }
 .join-hint strong { letter-spacing: 0.08em; }
