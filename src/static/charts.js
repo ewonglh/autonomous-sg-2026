@@ -8,7 +8,6 @@ const pct = (n, total) => (total ? Math.round((n / total) * 100) : 0);
 // options: [{label, count}]
 export function renderBars(options) {
   const total = options.reduce((sum, o) => sum + o.count, 0);
-  const max = Math.max(1, ...options.map((o) => o.count));
   return el(
     "div",
     { class: "bars", role: "list" },
@@ -17,7 +16,7 @@ export function renderBars(options) {
         "div",
         { role: "listitem" },
         el("div", { class: "bar-label" }, el("span", {}, o.label), el("span", { class: "muted" }, `${o.count} · ${pct(o.count, total)}%`)),
-        el("div", { class: "bar-track" }, el("div", { class: "bar-fill", style: `width:${(o.count / max) * 100}%;background:${color(i)}` })),
+        el("div", { class: "bar-track" }, el("div", { class: "bar-fill", style: `width:${total ? (o.count / total) * 100 : 0}%;background:${color(i)}` })),
       ),
     ),
   );
