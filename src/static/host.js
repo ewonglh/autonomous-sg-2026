@@ -178,7 +178,8 @@ async function act(path, method, body, localChanges) {
   await refresh();
 }
 
-// Showing a timed slide opens it and (re)starts its timer on the server.
+// Voting is automatic: the server opens a slide when it goes on screen, keeps it open while it is
+// there (until its timer ends, if it has one) and closes it when another slide replaces it.
 async function show(id) {
   await act("/active", "POST", { question_id: id });
   const status = $("run-status");
@@ -235,7 +236,7 @@ function slideItem(q, index) {
       el("strong", { class: "slide-text" }, q.text),
       picture ? el("img", { class: "image-thumb", src: picture, alt: "Picture for this slide" }) : null,
       el("span", { class: "badge" }, TYPE_LABEL[q.type] || q.type),
-      isActive ? el("span", { class: "badge on" }, "On screen") : null,
+      isActive ? el("span", { class: "badge on" }, `On screen · ${q.type === "qa" ? "questions" : "voting"} ${q.is_open ? "open" : "closed"}`) : null,
     ),
     el(
       "div",
@@ -244,7 +245,6 @@ function slideItem(q, index) {
       el("button", { "aria-label": "Move down", title: "Move down", disabled: index === slides.length - 1, onclick: () => move(index, 1) }, "↓"),
       isActive ? null : el("button", { class: "primary", onclick: () => show(q.id) }, "Show"),
       isActive && q.time_limit ? el("button", { onclick: () => show(q.id) }, "Restart timer") : null,
-      toggle("is_open", q.type === "qa" ? "Open questions" : "Open voting", q.type === "qa" ? "Close questions" : "Close voting"),
       q.type === "qa" ? null : toggle("results_visible", "Reveal results", "Hide results"),
       chartPicker,
       el("label", { class: "button" }, picture ? "Change picture" : "Add picture", pictureInput),
